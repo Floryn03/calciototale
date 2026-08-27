@@ -16,19 +16,9 @@ type Player = {
 type Presence = {
   id: string;
   player_id: string;
-  event_id: string | null;
   presence_date: string;
   status: string;
   note: string | null;
-};
-
-type EventItem = {
-  id: string | number;
-  name: string;
-  date?: string;
-  time?: string;
-  event_date?: string;
-  event_time?: string;
 };
 
 const positions = [
@@ -62,6 +52,16 @@ const today = new Date().toISOString().split("T")[0];
 export default function Home() {
   const [activeSection, setActiveSection] = useState("dashboard");
 
+  // =========================================================
+  // ADMIN AUTHENTICATION
+  // =========================================================
+  const [showLogin, setShowLogin] = useState(false);
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [authError, setAuthError] = useState("");
+
   const [players, setPlayers] = useState<Player[]>([]);
   const [presences, setPresences] = useState<Presence[]>([]);
 
@@ -88,8 +88,23 @@ export default function Home() {
   const [eventDate, setEventDate] = useState("");
   const [eventTime, setEventTime] = useState("");
 
-  const [events, setEvents] = useState<EventItem[]>([]);
-  const [selectedEventId, setSelectedEventId] = useState<string>("");
+  const [events, setEvents] = useState<
+    {
+      id: number;
+      name: string;
+      date: string;
+      time: string;
+    }[]
+  >(() => {
+    if (typeof window === "undefined") return [];
+
+    try {
+      const saved = window.localStorage.getItem("calcioTotale_events");
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
 
   const [competitions, setCompetitions] = useState<
     {
@@ -102,6 +117,107 @@ export default function Home() {
 
   const [competitionName, setCompetitionName] = useState("");
   const [competitionType, setCompetitionType] = useState("Torneo");
+
+  // =========================================================
+  // ADMIN AUTHENTICATION
+  // =========================================================
+
+  async function checkAdminSession() {
+    const { data } = await supabase.auth.getSession();
+    const user = data.session?.user;
+
+    if (!user) {
+      setIsAdmin(false);
+      return;
+    }
+
+    const { data: profile, error } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+
+    if (!error && profile?.role === "admin") {
+      setIsAdmin(true);
+    } else {
+      await supabase.auth.signOut();
+      setIsAdmin(false);
+    }
+  }
+
+  async function handleAdminLogin() {
+    setAuthLoading(true);
+    setAuthError("");
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: authEmail.trim(),
+      password: authPassword,
+    });
+
+    if (error || !data.user) {
+      setAuthError("Email o password non corretti.");
+      setAuthLoading(false);
+      return;
+    }
+
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", data.user.id)
+      .single();
+
+    if (profileError || profile?.role !== "admin") {
+      await supabase.auth.signOut();
+      setIsAdmin(false);
+      setAuthError("Accesso negato: questo utente non è amministratore.");
+      setAuthLoading(false);
+      return;
+    }
+
+    setIsAdmin(true);
+    setShowLogin(false);
+    setAuthPassword("");
+    setAuthError("");
+    setActiveSection("admin");
+    setAuthLoading(false);
+  }
+
+  async function handleAdminLogout() {
+    await supabase.auth.signOut();
+    setIsAdmin(false);
+    setShowLogin(false);
+    setAuthEmail("");
+    setAuthPassword("");
+    setAuthError("");
+    setActiveSection("dashboard");
+  }
+
+  useEffect(() => {
+    checkAdminSession();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_OUT") {
+        setIsAdmin(false);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // =========================================================
+  // EVENTS PERSISTENCE
+  // =========================================================
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    window.localStorage.setItem(
+      "calcioTotale_events",
+      JSON.stringify(events)
+    );
+  }, [events]);
 
   // =========================================================
   // LOAD PLAYERS
@@ -133,17 +249,10 @@ export default function Home() {
   async function loadPresences() {
     setLoadingPresences(true);
 
-    let query = supabase
+    const { data, error } = await supabase
       .from("presences")
-      .select("*");
-
-    if (selectedEventId) {
-      query = query.eq("event_id", selectedEventId);
-    } else {
-      query = query.eq("presence_date", presenceDate);
-    }
-
-    const { data, error } = await query;
+      .select("*")
+      .eq("presence_date", presenceDate);
 
     if (error) {
       console.error(error);
@@ -155,42 +264,13 @@ export default function Home() {
     setLoadingPresences(false);
   }
 
-  async function loadEvents() {
-    const { data, error } = await supabase
-      .from("events")
-      .select("id, name, event_date, event_time")
-      .order("event_date", { ascending: true })
-      .order("event_time", { ascending: true });
-
-    if (error) {
-      console.error("Errore caricamento eventi:", error);
-      return;
-    }
-
-    const loaded = (data || []) as EventItem[];
-    setEvents(loaded);
-
-    if (loaded.length > 0 && !selectedEventId) {
-      setSelectedEventId(String(loaded[0].id));
-    }
-  }
-
   useEffect(() => {
     loadPlayers();
-    loadEvents();
   }, []);
 
   useEffect(() => {
-    const selectedEvent = events.find(
-      (event) => String(event.id) === selectedEventId
-    );
-
-    if (selectedEvent) {
-      setPresenceDate(selectedEvent.event_date ?? "");
-        }
-
     loadPresences();
-  }, [presenceDate, selectedEventId]);
+  }, [presenceDate]);
 
   // =========================================================
   // PLAYER FORM
@@ -395,10 +475,7 @@ export default function Home() {
 
   function getPresence(playerId: string) {
     return presences.find(
-      (presence) =>
-        presence.player_id === playerId &&
-        (!selectedEventId ||
-          String(presence.event_id) === selectedEventId)
+      (presence) => presence.player_id === playerId
     );
   }
 
@@ -406,23 +483,11 @@ export default function Home() {
     player: Player,
     newStatus: string
   ) {
-    if (!selectedEventId) {
-      alert("Seleziona prima un evento.");
-      return;
-    }
-
     const existing = getPresence(player.id);
-
-    const selectedEvent = events.find(
-      (event) => String(event.id) === selectedEventId
-    );
 
     const payload = {
       player_id: player.id,
-      event_id: selectedEvent ? selectedEvent.id : null,
-      presence_date: selectedEvent
-        ? selectedEvent.event_date
-        : presenceDate,
+      presence_date: presenceDate,
       status: newStatus,
       note: existing?.note || null,
     };
@@ -473,6 +538,10 @@ export default function Home() {
     (player) => getPresence(player.id)?.status === "Assente"
   );
 
+  const uncertainPlayers = players.filter(
+    (player) => getPresence(player.id)?.status === "In dubbio"
+  );
+
   // =========================================================
   // EVENTS
   // =========================================================
@@ -503,7 +572,7 @@ export default function Home() {
     setEventTime("");
   }
 
-  function deleteEvent(id: string | number) {
+  function deleteEvent(id: number) {
     setEvents((current) =>
       current.filter((event) => event.id !== id)
     );
@@ -583,8 +652,16 @@ export default function Home() {
             </span>
 
             <button
-              onClick={() => setActiveSection("admin")}
-              className="rounded-xl border border-slate-700 px-4 py-2 text-sm transition hover:bg-slate-800"
+              type="button"
+              onClick={() => {
+                if (isAdmin) {
+                  setActiveSection("admin");
+                } else {
+                  setAuthError("");
+                  setShowLogin(true);
+                }
+              }}
+              className="min-h-11 touch-manipulation rounded-xl border border-slate-700 px-4 py-2 text-sm transition hover:bg-slate-800"
             >
               ⚙️ Admin
             </button>
@@ -601,9 +678,18 @@ export default function Home() {
 
           {menu.map((item) => (
             <button
+              type="button"
               key={item.id}
-              onClick={() => setActiveSection(item.id)}
-              className={`whitespace-nowrap rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
+              onClick={() => {
+                if (item.id === "admin" && !isAdmin) {
+                  setAuthError("");
+                  setShowLogin(true);
+                  return;
+                }
+
+                setActiveSection(item.id);
+              }}
+              className={`min-h-11 touch-manipulation whitespace-nowrap rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
                 activeSection === item.id
                   ? "bg-emerald-500 text-slate-950"
                   : "text-slate-300 hover:bg-slate-800 hover:text-white"
@@ -723,6 +809,11 @@ export default function Home() {
                   <DashboardRow
                     label="🔴 Assenti"
                     value={absentPlayers.length}
+                  />
+
+                  <DashboardRow
+                    label="🟡 In dubbio"
+                    value={uncertainPlayers.length}
                   />
 
                 </div>
@@ -997,35 +1088,6 @@ export default function Home() {
               description="Gestisci la disponibilità dei giocatori per ogni giornata."
             />
 
-            <div className="mb-6 rounded-2xl border border-emerald-500/30 bg-slate-900 p-5">
-              <label className="mb-2 block text-sm font-semibold">
-                📅 Evento
-              </label>
-
-              <select
-                value={selectedEventId}
-                onChange={(e) => setSelectedEventId(e.target.value)}
-                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3"
-              >
-                <option value="">
-                  Seleziona un evento
-                </option>
-
-                {events.map((event) => (
-                  <option key={event.id} value={event.id}>
-                    {event.name} — {event.event_date}
-                    {event.event_time ? ` — ${event.event_time}` : ""}
-                  </option>
-                ))}
-              </select>
-
-              {events.length === 0 && (
-                <p className="mt-2 text-sm text-slate-500">
-                  Non ci sono eventi disponibili.
-                </p>
-              )}
-            </div>
-
             <div className="mb-6 grid gap-5 md:grid-cols-2">
 
               <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
@@ -1059,6 +1121,10 @@ export default function Home() {
 
                   <Badge
                     text={`🔴 ${absentPlayers.length} Assenti`}
+                  />
+
+                  <Badge
+                    text={`🟡 ${uncertainPlayers.length} In dubbio`}
                   />
 
                 </div>
@@ -1175,6 +1241,20 @@ export default function Home() {
                                     }
                                   />
 
+                                  <PresenceButton
+                                    text="🟡"
+                                    active={
+                                      presence?.status ===
+                                      "In dubbio"
+                                    }
+                                    onClick={() =>
+                                      savePresence(
+                                        player,
+                                        "In dubbio"
+                                      )
+                                    }
+                                  />
+
                                 </div>
 
                               </td>
@@ -1257,7 +1337,7 @@ export default function Home() {
             ) : (
               <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
 
-                {events
+                {[...events]
                   .sort((a, b) =>
                     `${a.date}${a.time}`.localeCompare(
                       `${b.date}${b.time}`
@@ -1580,9 +1660,8 @@ export default function Home() {
             ADMIN
         ===================================================== */}
 
-        {activeSection === "admin" && (
+        {activeSection === "admin" && isAdmin && (
           <div>
-
             <PageHeader
               eyebrow="CALCIO TOTALE"
               title="⚙️ Amministrazione"
@@ -1590,7 +1669,6 @@ export default function Home() {
             />
 
             <div className="grid gap-5 md:grid-cols-2">
-
               <AdminCard
                 icon="🗄️"
                 title="Database"
@@ -1615,20 +1693,31 @@ export default function Home() {
               <AdminCard
                 icon="🔐"
                 title="Accesso"
-                text="Area amministratore pronta per autenticazione."
-                status="DA CONFIGURARE"
+                text="Autenticazione Supabase attiva. Ruolo admin verificato."
+                status="PROTETTO"
               />
-
             </div>
 
             <div className="mt-8 rounded-3xl border border-slate-800 bg-slate-900 p-7">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-xl font-bold">
+                    🧰 Manutenzione
+                  </h3>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Operazioni amministrative del sistema.
+                  </p>
+                </div>
 
-              <h3 className="text-xl font-bold">
-                🧰 Manutenzione
-              </h3>
+                <button
+                  onClick={handleAdminLogout}
+                  className="rounded-xl border border-red-500/30 px-5 py-3 font-semibold text-red-400 hover:bg-red-500/10"
+                >
+                  🚪 Logout amministratore
+                </button>
+              </div>
 
               <div className="mt-5 flex flex-wrap gap-3">
-
                 <button
                   onClick={loadPlayers}
                   className="rounded-xl border border-slate-700 px-5 py-3 hover:bg-slate-800"
@@ -1642,11 +1731,85 @@ export default function Home() {
                 >
                   🔄 Ricarica presenze
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
 
+        {/* =====================================================
+            ADMIN LOGIN
+        ===================================================== */}
+
+        {showLogin && !isAdmin && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 px-4 backdrop-blur-sm">
+            <div className="w-full max-w-md rounded-3xl border border-slate-700 bg-slate-900 p-7 shadow-2xl">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="font-bold uppercase tracking-[0.25em] text-emerald-400">
+                    CALCIO TOTALE
+                  </p>
+                  <h2 className="mt-2 text-3xl font-black">
+                    🔐 Login Amministratore
+                  </h2>
+                  <p className="mt-2 text-sm text-slate-400">
+                    Accedi con il tuo account Supabase.
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => {
+                    if (!authLoading) {
+                      setShowLogin(false);
+                      setAuthError("");
+                    }
+                  }}
+                  disabled={authLoading}
+                  className="text-2xl text-slate-500 hover:text-white disabled:opacity-50"
+                >
+                  ✕
+                </button>
               </div>
 
-            </div>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleAdminLogin();
+                }}
+                className="mt-7 space-y-5"
+              >
+                <Input
+                  label="Email"
+                  value={authEmail}
+                  onChange={setAuthEmail}
+                  placeholder="babei.florin@me.com"
+                  type="email"
+                />
 
+                <Input
+                  label="Password"
+                  value={authPassword}
+                  onChange={setAuthPassword}
+                  placeholder="Inserisci la password"
+                  type="password"
+                />
+
+                {authError && (
+                  <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+                    {authError}
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={authLoading || !authEmail || !authPassword}
+                  className="w-full rounded-xl bg-emerald-500 px-6 py-3 font-black text-slate-950 hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {authLoading
+                    ? "⏳ Verifica in corso..."
+                    : "🔓 Accedi"}
+                </button>
+              </form>
+            </div>
           </div>
         )}
 
@@ -1912,6 +2075,8 @@ function PresenceBadge({
       "bg-emerald-500/10 text-emerald-400",
     Assente:
       "bg-red-500/10 text-red-400",
+    "In dubbio":
+      "bg-yellow-500/10 text-yellow-400",
     "Da confermare":
       "bg-slate-800 text-slate-400",
   };
