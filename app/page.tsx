@@ -16,9 +16,17 @@ type Player = {
 type Presence = {
   id: string;
   player_id: string;
+  event_id: string | null;
   presence_date: string;
   status: string;
   note: string | null;
+};
+
+type EventItem = {
+  id: string;
+  name: string;
+  event_date: string;
+  event_time: string | null;
 };
 
 const positions = [
@@ -88,23 +96,8 @@ export default function Home() {
   const [eventDate, setEventDate] = useState("");
   const [eventTime, setEventTime] = useState("");
 
-  const [events, setEvents] = useState<
-    {
-      id: number;
-      name: string;
-      date: string;
-      time: string;
-    }[]
-  >(() => {
-    if (typeof window === "undefined") return [];
-
-    try {
-      const saved = window.localStorage.getItem("calcioTotale_events");
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
+  const [events, setEvents] = useState<EventItem[]>([]);
+  const [selectedEventId, setSelectedEventId] = useState("");
 
   const [competitions, setCompetitions] = useState<
     {
@@ -207,17 +200,8 @@ export default function Home() {
   }, []);
 
   // =========================================================
-  // EVENTS PERSISTENCE
+  // EVENTS
   // =========================================================
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    window.localStorage.setItem(
-      "calcioTotale_events",
-      JSON.stringify(events)
-    );
-  }, [events]);
 
   // =========================================================
   // LOAD PLAYERS
@@ -249,10 +233,17 @@ export default function Home() {
   async function loadPresences() {
     setLoadingPresences(true);
 
-    const { data, error } = await supabase
+    let query = supabase
       .from("presences")
-      .select("*")
-      .eq("presence_date", presenceDate);
+      .select("*");
+
+    if (selectedEventId) {
+      query = query.eq("event_id", selectedEventId);
+    } else {
+      query = query.eq("presence_date", presenceDate);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       console.error(error);
@@ -264,13 +255,39 @@ export default function Home() {
     setLoadingPresences(false);
   }
 
+  async function loadEvents() {
+    const { data, error } = await supabase
+      .from("events")
+      .select("id, name, event_date, event_time")
+      .order("event_date", { ascending: true })
+      .order("event_time", { ascending: true });
+
+    if (error) {
+      console.error("Errore caricamento eventi:", error);
+      alert("Errore durante il caricamento degli eventi.");
+      return;
+    }
+
+    const loaded = (data || []) as EventItem[];
+    setEvents(loaded);
+  }
+
   useEffect(() => {
     loadPlayers();
+    loadEvents();
   }, []);
 
   useEffect(() => {
+    const selectedEvent = events.find(
+      (event) => event.id === selectedEventId
+    );
+
+    if (selectedEvent) {
+      setPresenceDate(selectedEvent.event_date);
+    }
+
     loadPresences();
-  }, [presenceDate]);
+  }, [presenceDate, selectedEventId, events]);
 
   // =========================================================
   // PLAYER FORM
@@ -475,7 +492,9 @@ export default function Home() {
 
   function getPresence(playerId: string) {
     return presences.find(
-      (presence) => presence.player_id === playerId
+      (presence) =>
+        presence.player_id === playerId &&
+        (!selectedEventId || presence.event_id === selectedEventId)
     );
   }
 
@@ -483,11 +502,25 @@ export default function Home() {
     player: Player,
     newStatus: string
   ) {
+    if (!selectedEventId) {
+      alert("Seleziona prima un evento.");
+      return;
+    }
+
     const existing = getPresence(player.id);
+    const selectedEvent = events.find(
+      (event) => event.id === selectedEventId
+    );
+
+    if (!selectedEvent) {
+      alert("L'evento selezionato non è disponibile.");
+      return;
+    }
 
     const payload = {
       player_id: player.id,
-      presence_date: presenceDate,
+      event_id: selectedEvent.id,
+      presence_date: selectedEvent.event_date,
       status: newStatus,
       note: existing?.note || null,
     };
@@ -546,7 +579,7 @@ export default function Home() {
   // EVENTS
   // =========================================================
 
-  function addEvent() {
+  async function addEvent() {
     if (!eventName.trim()) {
       alert("Inserisci il nome dell'evento.");
       return;
@@ -557,25 +590,46 @@ export default function Home() {
       return;
     }
 
-    setEvents((current) => [
-      ...current,
-      {
-        id: Date.now(),
+    const { data, error } = await supabase
+      .from("events")
+      .insert({
         name: eventName.trim(),
-        date: eventDate,
-        time: eventTime,
-      },
-    ]);
+        event_date: eventDate,
+        event_time: eventTime || null,
+      })
+      .select("id, name, event_date, event_time")
+      .single();
+
+    if (error || !data) {
+      alert(`Errore salvataggio evento:\n${error?.message || "Evento non creato."}`);
+      return;
+    }
+
+    setEvents((current) => [...current, data as EventItem]);
+    setSelectedEventId(data.id);
+    setPresenceDate(data.event_date);
 
     setEventName("");
     setEventDate("");
     setEventTime("");
   }
 
-  function deleteEvent(id: number) {
-    setEvents((current) =>
-      current.filter((event) => event.id !== id)
-    );
+  async function deleteEvent(id: string) {
+    const { error } = await supabase
+      .from("events")
+      .delete()
+      .eq("id", id);
+
+    if (error) {
+      alert(`Errore eliminazione evento:\n${error.message}`);
+      return;
+    }
+
+    setEvents((current) => current.filter((event) => event.id !== id));
+
+    if (selectedEventId === id) {
+      setSelectedEventId("");
+    }
   }
 
   // =========================================================
@@ -1093,17 +1147,29 @@ export default function Home() {
               <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
 
                 <label className="mb-2 block text-sm font-semibold">
-                  Data
+                  Evento
                 </label>
 
-                <input
-                  type="date"
-                  value={presenceDate}
-                  onChange={(e) =>
-                    setPresenceDate(e.target.value)
-                  }
+                <select
+                  value={selectedEventId}
+                  onChange={(e) => setSelectedEventId(e.target.value)}
                   className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3"
-                />
+                >
+                  <option value="">Seleziona un evento</option>
+
+                  {events.map((event) => (
+                    <option key={event.id} value={event.id}>
+                      {event.name} — {event.event_date}
+                      {event.event_time ? ` — ${event.event_time}` : ""}
+                    </option>
+                  ))}
+                </select>
+
+                {events.length === 0 && (
+                  <p className="mt-2 text-sm text-slate-500">
+                    Non ci sono eventi disponibili.
+                  </p>
+                )}
 
               </div>
 
@@ -1339,8 +1405,8 @@ export default function Home() {
 
                 {[...events]
                   .sort((a, b) =>
-                    `${a.date}${a.time}`.localeCompare(
-                      `${b.date}${b.time}`
+                    `${a.event_date}${a.event_time ?? ""}`.localeCompare(
+                      `${b.event_date}${b.event_time ?? ""}`
                     )
                   )
                   .map((event) => (
@@ -1358,12 +1424,12 @@ export default function Home() {
                       </h3>
 
                       <p className="mt-3 text-slate-400">
-                        📆 {event.date}
+                        📆 {event.event_date}
                       </p>
 
-                      {event.time && (
+                      {event.event_time && (
                         <p className="mt-1 text-slate-400">
-                          🕘 {event.time}
+                          🕘 {event.event_time}
                         </p>
                       )}
 
