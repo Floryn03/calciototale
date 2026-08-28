@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 
 type Player = {
@@ -27,6 +27,20 @@ type EventItem = {
   name: string;
   event_date: string;
   event_time: string | null;
+};
+
+type PlayerAccount = {
+  user_id: string;
+  player_id: string;
+  login_id: string;
+  created_at: string;
+};
+
+type GeneratedCredentials = {
+  playerId: string;
+  playerName: string;
+  loginId: string;
+  password: string;
 };
 
 const positions = [
@@ -57,6 +71,14 @@ const menu = [
 
 const today = new Date().toISOString().split("T")[0];
 
+function normalizeLoginId(value: string) {
+  return value.trim().toUpperCase();
+}
+
+function playerLoginEmail(loginId: string) {
+  return `${normalizeLoginId(loginId).toLowerCase()}@players.calciototale.invalid`;
+}
+
 export default function Home() {
   const [activeSection, setActiveSection] = useState("dashboard");
 
@@ -69,6 +91,16 @@ export default function Home() {
   const [authLoading, setAuthLoading] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [authError, setAuthError] = useState("");
+  const [showPlayerLogin, setShowPlayerLogin] = useState(false);
+  const [playerLoginId, setPlayerLoginId] = useState("");
+  const [playerPassword, setPlayerPassword] = useState("");
+  const [playerAuthError, setPlayerAuthError] = useState("");
+  const [sessionPlayerId, setSessionPlayerId] = useState<string | null>(null);
+  const [sessionPlayerName, setSessionPlayerName] = useState("");
+  const [playerAccounts, setPlayerAccounts] = useState<PlayerAccount[]>([]);
+  const [accountLoadingId, setAccountLoadingId] = useState<string | null>(null);
+  const [generatedCredentials, setGeneratedCredentials] =
+    useState<GeneratedCredentials | null>(null);
 
   const [players, setPlayers] = useState<Player[]>([]);
   const [presences, setPresences] = useState<Presence[]>([]);
@@ -90,8 +122,6 @@ export default function Home() {
   const [search, setSearch] = useState("");
 
   const [presenceDate, setPresenceDate] = useState(today);
-  const [presenceFilter, setPresenceFilter] = useState("Tutti");
-
   const [eventName, setEventName] = useState("");
   const [eventDate, setEventDate] = useState("");
   const [eventTime, setEventTime] = useState("");
@@ -115,12 +145,30 @@ export default function Home() {
   // ADMIN AUTHENTICATION
   // =========================================================
 
-  async function checkAdminSession() {
-    const { data } = await supabase.auth.getSession();
-    const user = data.session?.user;
+  const loadPlayerAccounts = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("player_accounts")
+      .select("user_id, player_id, login_id, created_at")
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      console.error("Errore caricamento accessi giocatore:", error);
+      setPlayerAccounts([]);
+      return;
+    }
+
+    setPlayerAccounts((data || []) as PlayerAccount[]);
+  }, []);
+
+  const checkSession = useCallback(async () => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
     if (!user) {
       setIsAdmin(false);
+      setSessionPlayerId(null);
+      setSessionPlayerName("");
       return;
     }
 
@@ -132,11 +180,28 @@ export default function Home() {
 
     if (!error && profile?.role === "admin") {
       setIsAdmin(true);
+      setSessionPlayerId(null);
+      setSessionPlayerName("");
+      await loadPlayerAccounts();
     } else {
-      await supabase.auth.signOut();
-      setIsAdmin(false);
+      const { data: account, error: accountError } = await supabase
+        .from("player_accounts")
+        .select("player_id, login_id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (!accountError && account) {
+        setIsAdmin(false);
+        setSessionPlayerId(account.player_id);
+        setSessionPlayerName(account.login_id);
+      } else {
+        await supabase.auth.signOut();
+        setIsAdmin(false);
+        setSessionPlayerId(null);
+        setSessionPlayerName("");
+      }
     }
-  }
+  }, [loadPlayerAccounts]);
 
   async function handleAdminLogin() {
     setAuthLoading(true);
@@ -168,11 +233,61 @@ export default function Home() {
     }
 
     setIsAdmin(true);
+    setSessionPlayerId(null);
+    setSessionPlayerName("");
     setShowLogin(false);
     setAuthPassword("");
     setAuthError("");
     setActiveSection("admin");
+    await loadPlayerAccounts();
     setAuthLoading(false);
+  }
+
+  async function handlePlayerLogin() {
+    const loginId = normalizeLoginId(playerLoginId);
+
+    if (!/^[A-Z0-9][A-Z0-9_-]{2,31}$/.test(loginId)) {
+      setPlayerAuthError("Inserisci un ID giocatore valido.");
+      return;
+    }
+
+    setAuthLoading(true);
+    setPlayerAuthError("");
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: playerLoginEmail(loginId),
+      password: playerPassword,
+    });
+
+    if (error || !data.user) {
+      setPlayerAuthError("ID giocatore o password non corretti.");
+      setAuthLoading(false);
+      return;
+    }
+
+    const { data: account, error: accountError } = await supabase
+      .from("player_accounts")
+      .select("player_id, login_id")
+      .eq("user_id", data.user.id)
+      .maybeSingle();
+
+    if (accountError || !account) {
+      await supabase.auth.signOut();
+      setPlayerAuthError("Questo account non è collegato a un giocatore.");
+      setAuthLoading(false);
+      return;
+    }
+
+    setIsAdmin(false);
+    setSessionPlayerId(account.player_id);
+    setSessionPlayerName(account.login_id);
+    setShowPlayerLogin(false);
+    setPlayerLoginId("");
+    setPlayerPassword("");
+    setActiveSection("presences");
+    setAuthLoading(false);
+
+    await Promise.all([loadPlayers(), loadEvents()]);
   }
 
   async function handleAdminLogout() {
@@ -182,22 +297,76 @@ export default function Home() {
     setAuthEmail("");
     setAuthPassword("");
     setAuthError("");
+    setPlayerAccounts([]);
+    setGeneratedCredentials(null);
     setActiveSection("dashboard");
   }
 
+  async function handlePlayerLogout() {
+    await supabase.auth.signOut();
+    setSessionPlayerId(null);
+    setSessionPlayerName("");
+    setShowPlayerLogin(false);
+    setPlayerLoginId("");
+    setPlayerPassword("");
+    setPlayerAuthError("");
+    setActiveSection("dashboard");
+
+    await Promise.all([loadPlayers(), loadEvents()]);
+  }
+
   useEffect(() => {
-    checkAdminSession();
+    const sessionCheck = window.setTimeout(() => {
+      void checkSession();
+    }, 0);
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event) => {
       if (event === "SIGNED_OUT") {
         setIsAdmin(false);
+        setSessionPlayerId(null);
+        setSessionPlayerName("");
       }
     });
 
-    return () => subscription.unsubscribe();
-  }, []);
+    return () => {
+      window.clearTimeout(sessionCheck);
+      subscription.unsubscribe();
+    };
+  }, [checkSession]);
+
+  async function managePlayerAccount(
+    player: Player,
+    action: "create" | "reset_password"
+  ) {
+    setAccountLoadingId(player.id);
+    setGeneratedCredentials(null);
+
+    const { data, error } = await supabase.functions.invoke(
+      "manage-player-account",
+      {
+        body: { action, player_id: player.id },
+      }
+    );
+
+    setAccountLoadingId(null);
+
+    if (error || !data?.login_id || !data?.password) {
+      const message = data?.error || error?.message || "Operazione non riuscita.";
+      alert(`Errore accesso giocatore:\n${message}`);
+      return;
+    }
+
+    setGeneratedCredentials({
+      playerId: player.id,
+      playerName: player.name,
+      loginId: data.login_id,
+      password: data.password,
+    });
+
+    await loadPlayerAccounts();
+  }
 
   // =========================================================
   // EVENTS
@@ -230,7 +399,7 @@ export default function Home() {
   // LOAD PRESENCES
   // =========================================================
 
-  async function loadPresences() {
+  const loadPresences = useCallback(async () => {
     setLoadingPresences(true);
 
     let query = supabase
@@ -253,7 +422,7 @@ export default function Home() {
     }
 
     setLoadingPresences(false);
-  }
+  }, [presenceDate, selectedEventId]);
 
   async function loadEvents() {
     const { data, error } = await supabase
@@ -278,16 +447,12 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    const selectedEvent = events.find(
-      (event) => event.id === selectedEventId
-    );
+    const presenceLoad = window.setTimeout(() => {
+      void loadPresences();
+    }, 0);
 
-    if (selectedEvent) {
-      setPresenceDate(selectedEvent.event_date);
-    }
-
-    loadPresences();
-  }, [presenceDate, selectedEventId, events]);
+    return () => window.clearTimeout(presenceLoad);
+  }, [loadPresences]);
 
   // =========================================================
   // PLAYER FORM
@@ -671,6 +836,20 @@ export default function Home() {
     );
   }
 
+  const isPlayer = Boolean(sessionPlayerId) && !isAdmin;
+  const visibleMenu = isAdmin
+    ? menu
+    : isPlayer
+      ? menu.filter((item) =>
+          ["dashboard", "presences", "events"].includes(item.id)
+        )
+      : menu.filter((item) =>
+          ["dashboard", "events", "stats"].includes(item.id)
+        );
+  const presencePlayers = isPlayer
+    ? players.filter((player) => player.id === sessionPlayerId)
+    : players;
+
   // =========================================================
   // RENDER
   // =========================================================
@@ -705,6 +884,23 @@ export default function Home() {
               ● Sistema Online
             </span>
 
+            {!isAdmin && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (isPlayer) {
+                    handlePlayerLogout();
+                  } else {
+                    setPlayerAuthError("");
+                    setShowPlayerLogin(true);
+                  }
+                }}
+                className="min-h-11 touch-manipulation rounded-xl border border-emerald-500/30 px-4 py-2 text-sm text-emerald-400 transition hover:bg-emerald-500/10"
+              >
+                {isPlayer ? `🚪 ${sessionPlayerName}` : "👤 Giocatore"}
+              </button>
+            )}
+
             <button
               type="button"
               onClick={() => {
@@ -730,7 +926,7 @@ export default function Home() {
 
         <nav className="mx-auto flex max-w-7xl gap-2 overflow-x-auto px-6 py-3">
 
-          {menu.map((item) => (
+          {visibleMenu.map((item) => (
             <button
               type="button"
               key={item.id}
@@ -886,35 +1082,44 @@ export default function Home() {
 
                 <div className="mt-6 grid gap-3 sm:grid-cols-2">
 
-                  <QuickButton
-                    icon="➕"
-                    text="Nuovo giocatore"
-                    onClick={openPlayerForm}
-                  />
+                  {isAdmin && (
+                    <QuickButton
+                      icon="➕"
+                      text="Nuovo giocatore"
+                      onClick={openPlayerForm}
+                    />
+                  )}
 
                   <QuickButton
                     icon="✅"
-                    text="Gestisci presenze"
-                    onClick={() =>
-                      setActiveSection("presences")
-                    }
+                    text={isPlayer ? "La mia presenza" : isAdmin ? "Gestisci presenze" : "Accesso giocatore"}
+                    onClick={() => {
+                      if (isAdmin || isPlayer) {
+                        setActiveSection("presences");
+                      } else {
+                        setPlayerAuthError("");
+                        setShowPlayerLogin(true);
+                      }
+                    }}
                   />
 
                   <QuickButton
                     icon="📅"
-                    text="Nuovo evento"
+                    text={isAdmin ? "Nuovo evento" : "Vedi eventi"}
                     onClick={() =>
                       setActiveSection("events")
                     }
                   />
 
-                  <QuickButton
-                    icon="🏆"
-                    text="Competizioni"
-                    onClick={() =>
-                      setActiveSection("competitions")
-                    }
-                  />
+                  {isAdmin && (
+                    <QuickButton
+                      icon="🏆"
+                      text="Competizioni"
+                      onClick={() =>
+                        setActiveSection("competitions")
+                      }
+                    />
+                  )}
 
                 </div>
 
@@ -924,7 +1129,7 @@ export default function Home() {
 
             <div className="mt-8 grid gap-5 md:grid-cols-3">
 
-              {menu.slice(1).map((item) => (
+              {visibleMenu.filter((item) => item.id !== "dashboard").map((item) => (
                 <button
                   key={item.id}
                   onClick={() => setActiveSection(item.id)}
@@ -961,8 +1166,8 @@ export default function Home() {
               eyebrow="CALCIO TOTALE"
               title="👥 Giocatori"
               description="Gestisci la rosa completa della squadra."
-              buttonText="➕ Nuovo giocatore"
-              onButton={openPlayerForm}
+              buttonText={isAdmin ? "➕ Nuovo giocatore" : undefined}
+              onButton={isAdmin ? openPlayerForm : undefined}
             />
 
             {showPlayerForm && (
@@ -1120,6 +1325,7 @@ export default function Home() {
                     onDelete={deletePlayer}
                     onToggleStatus={togglePlayerStatus}
                     onEdit={openEditPlayer}
+                    canManage={isAdmin}
                   />
                 ))}
 
@@ -1234,7 +1440,7 @@ export default function Home() {
 
                     <tbody>
 
-                      {players
+                      {presencePlayers
                         .filter(
                           (player) =>
                             player.status === "Attivo"
@@ -1277,51 +1483,29 @@ export default function Home() {
 
                               <td className="px-5 py-4">
 
-                                <div className="flex flex-wrap gap-2">
-
-                                  <PresenceButton
-                                    text="🟢"
-                                    active={
-                                      presence?.status ===
-                                      "Presente"
-                                    }
-                                    onClick={() =>
-                                      savePresence(
-                                        player,
-                                        "Presente"
-                                      )
-                                    }
-                                  />
-
-                                  <PresenceButton
-                                    text="🔴"
-                                    active={
-                                      presence?.status ===
-                                      "Assente"
-                                    }
-                                    onClick={() =>
-                                      savePresence(
-                                        player,
-                                        "Assente"
-                                      )
-                                    }
-                                  />
-
-                                  <PresenceButton
-                                    text="🟡"
-                                    active={
-                                      presence?.status ===
-                                      "In dubbio"
-                                    }
-                                    onClick={() =>
-                                      savePresence(
-                                        player,
-                                        "In dubbio"
-                                      )
-                                    }
-                                  />
-
-                                </div>
+                                {(isAdmin || player.id === sessionPlayerId) ? (
+                                  <div className="flex flex-wrap gap-2">
+                                    <PresenceButton
+                                      text="🟢"
+                                      active={presence?.status === "Presente"}
+                                      onClick={() => savePresence(player, "Presente")}
+                                    />
+                                    <PresenceButton
+                                      text="🔴"
+                                      active={presence?.status === "Assente"}
+                                      onClick={() => savePresence(player, "Assente")}
+                                    />
+                                    <PresenceButton
+                                      text="🟡"
+                                      active={presence?.status === "In dubbio"}
+                                      onClick={() => savePresence(player, "In dubbio")}
+                                    />
+                                  </div>
+                                ) : (
+                                  <span className="text-sm text-slate-500">
+                                    Sola lettura
+                                  </span>
+                                )}
 
                               </td>
 
@@ -1354,6 +1538,7 @@ export default function Home() {
               description="Organizza allenamenti, partite, tornei e appuntamenti."
             />
 
+            {isAdmin && (
             <div className="mb-8 rounded-3xl border border-slate-800 bg-slate-900 p-7">
 
               <h3 className="text-xl font-bold">
@@ -1393,6 +1578,7 @@ export default function Home() {
               </button>
 
             </div>
+            )}
 
             {events.length === 0 ? (
               <EmptyState
@@ -1433,14 +1619,14 @@ export default function Home() {
                         </p>
                       )}
 
-                      <button
-                        onClick={() =>
-                          deleteEvent(event.id)
-                        }
-                        className="mt-5 w-full rounded-xl border border-red-500/20 px-4 py-3 text-sm text-red-400"
-                      >
-                        🗑️ Elimina
-                      </button>
+                      {isAdmin && (
+                        <button
+                          onClick={() => deleteEvent(event.id)}
+                          className="mt-5 w-full rounded-xl border border-red-500/20 px-4 py-3 text-sm text-red-400"
+                        >
+                          🗑️ Elimina
+                        </button>
+                      )}
 
                     </div>
                   ))}
@@ -1765,6 +1951,80 @@ export default function Home() {
             </div>
 
             <div className="mt-8 rounded-3xl border border-slate-800 bg-slate-900 p-7">
+              <div>
+                <h3 className="text-xl font-bold">🔑 Accessi giocatori</h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  Genera un ID e una password personale. La password viene mostrata solo in questo momento.
+                </p>
+              </div>
+
+              {generatedCredentials && (
+                <div className="mt-5 rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-5">
+                  <p className="font-black text-emerald-400">
+                    Credenziali per {generatedCredentials.playerName}
+                  </p>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-xl bg-slate-950 p-4">
+                      <p className="text-xs uppercase text-slate-500">ID giocatore</p>
+                      <p className="mt-1 font-mono text-lg font-bold">{generatedCredentials.loginId}</p>
+                    </div>
+                    <div className="rounded-xl bg-slate-950 p-4">
+                      <p className="text-xs uppercase text-slate-500">Password temporanea</p>
+                      <p className="mt-1 break-all font-mono text-lg font-bold">{generatedCredentials.password}</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => navigator.clipboard.writeText(
+                      `Calcio Totale\nID: ${generatedCredentials.loginId}\nPassword: ${generatedCredentials.password}\nhttps://calciototale.vercel.app`
+                    )}
+                    className="mt-4 min-h-11 touch-manipulation rounded-xl bg-emerald-500 px-5 py-3 font-black text-slate-950"
+                  >
+                    📋 Copia per WhatsApp
+                  </button>
+                </div>
+              )}
+
+              <div className="mt-6 space-y-3">
+                {players.map((player) => {
+                  const account = playerAccounts.find(
+                    (item) => item.player_id === player.id
+                  );
+                  const loading = accountLoadingId === player.id;
+
+                  return (
+                    <div
+                      key={player.id}
+                      className="flex flex-col gap-3 rounded-2xl bg-slate-950 p-4 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div>
+                        <p className="font-bold">{player.name}</p>
+                        <p className="mt-1 text-sm text-slate-500">
+                          {account ? `ID: ${account.login_id}` : "Nessun accesso creato"}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={loading}
+                        onClick={() => managePlayerAccount(
+                          player,
+                          account ? "reset_password" : "create"
+                        )}
+                        className="min-h-11 touch-manipulation rounded-xl border border-emerald-500/30 px-5 py-3 text-sm font-bold text-emerald-400 hover:bg-emerald-500/10 disabled:opacity-50"
+                      >
+                        {loading
+                          ? "⏳ Attendi..."
+                          : account
+                            ? "🔄 Nuova password"
+                            : "➕ Crea accesso"}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="mt-8 rounded-3xl border border-slate-800 bg-slate-900 p-7">
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
                   <h3 className="text-xl font-bold">
@@ -1873,6 +2133,73 @@ export default function Home() {
                   {authLoading
                     ? "⏳ Verifica in corso..."
                     : "🔓 Accedi"}
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {showPlayerLogin && !isAdmin && !isPlayer && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 px-4 backdrop-blur-sm">
+            <div className="w-full max-w-md rounded-3xl border border-slate-700 bg-slate-900 p-7 shadow-2xl">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="font-bold uppercase tracking-[0.25em] text-emerald-400">
+                    CALCIO TOTALE
+                  </p>
+                  <h2 className="mt-2 text-3xl font-black">👤 Accesso giocatore</h2>
+                  <p className="mt-2 text-sm text-slate-400">
+                    Usa l’ID e la password ricevuti dall’amministratore.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!authLoading) {
+                      setShowPlayerLogin(false);
+                      setPlayerAuthError("");
+                    }
+                  }}
+                  disabled={authLoading}
+                  className="min-h-11 min-w-11 touch-manipulation text-2xl text-slate-500 hover:text-white disabled:opacity-50"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  handlePlayerLogin();
+                }}
+                className="mt-7 space-y-5"
+              >
+                <Input
+                  label="ID giocatore"
+                  value={playerLoginId}
+                  onChange={setPlayerLoginId}
+                  placeholder="Es. CT-AB12"
+                />
+                <Input
+                  label="Password"
+                  value={playerPassword}
+                  onChange={setPlayerPassword}
+                  placeholder="Inserisci la password"
+                  type="password"
+                />
+
+                {playerAuthError && (
+                  <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+                    {playerAuthError}
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={authLoading || !playerLoginId || !playerPassword}
+                  className="min-h-12 w-full touch-manipulation rounded-xl bg-emerald-500 px-6 py-3 font-black text-slate-950 hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {authLoading ? "⏳ Accesso..." : "🔓 Entra"}
                 </button>
               </form>
             </div>
@@ -2051,11 +2378,13 @@ function PlayerCard({
   onDelete,
   onToggleStatus,
   onEdit,
+  canManage,
 }: {
   player: Player;
   onDelete: (player: Player) => void;
   onToggleStatus: (player: Player) => void;
   onEdit: (player: Player) => void;
+  canManage: boolean;
 }) {
   const isActive = player.status === "Attivo";
 
@@ -2096,19 +2425,33 @@ function PlayerCard({
           {player.position}
         </span>
 
-        <button
-          onClick={() => onToggleStatus(player)}
-          className={`rounded-lg px-3 py-1.5 text-sm font-bold ${
+        {canManage ? (
+          <button
+            type="button"
+            onClick={() => onToggleStatus(player)}
+            className={`rounded-lg px-3 py-1.5 text-sm font-bold ${
             isActive
               ? "bg-emerald-500/10 text-emerald-400"
               : "bg-red-500/10 text-red-400"
           }`}
-        >
-          {isActive ? "🟢 Attivo" : "🔴 Inattivo"}
-        </button>
+          >
+            {isActive ? "🟢 Attivo" : "🔴 Inattivo"}
+          </button>
+        ) : (
+          <span
+            className={`rounded-lg px-3 py-1.5 text-sm font-bold ${
+              isActive
+                ? "bg-emerald-500/10 text-emerald-400"
+                : "bg-red-500/10 text-red-400"
+            }`}
+          >
+            {isActive ? "🟢 Attivo" : "🔴 Inattivo"}
+          </span>
+        )}
 
       </div>
 
+      {canManage && (
       <div className="mt-5 grid grid-cols-2 gap-2">
 
         <button
@@ -2126,6 +2469,7 @@ function PlayerCard({
         </button>
 
       </div>
+      )}
 
     </div>
   );
