@@ -46,6 +46,14 @@ function generatePassword() {
     .join("");
 }
 
+function isValidLoginId(value: string) {
+  return /^[A-Za-z0-9][A-Za-z0-9_-]{2,31}$/.test(value);
+}
+
+function playerLoginEmail(loginId: string) {
+  return `${loginId.toLowerCase()}@players.calciototale.invalid`;
+}
+
 Deno.serve(async (request: Request) => {
   if (request.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -86,14 +94,17 @@ Deno.serve(async (request: Request) => {
     return json({ error: "Operazione riservata all’amministratore." }, 403);
   }
 
-  let body: { action?: string; player_id?: string };
+  let body: { action?: string; player_id?: string; login_id?: string };
   try {
     body = await request.json();
   } catch {
     return json({ error: "Richiesta non valida." }, 400);
   }
 
-  if (!body.player_id || !["create", "reset_password"].includes(body.action || "")) {
+  if (
+    !body.player_id ||
+    !["create", "reset_password", "update_login_id"].includes(body.action || "")
+  ) {
     return json({ error: "Azione o giocatore non validi." }, 400);
   }
 
@@ -107,8 +118,6 @@ Deno.serve(async (request: Request) => {
     return json({ error: "Giocatore non trovato." }, 404);
   }
 
-  const password = generatePassword();
-
   if (body.action === "reset_password") {
     const { data: account } = await adminClient
       .from("player_accounts")
@@ -120,6 +129,7 @@ Deno.serve(async (request: Request) => {
       return json({ error: "Accesso giocatore non trovato." }, 404);
     }
 
+    const password = generatePassword();
     const { error } = await adminClient.auth.admin.updateUserById(
       account.user_id,
       { password }
@@ -132,6 +142,72 @@ Deno.serve(async (request: Request) => {
     return json({ login_id: account.login_id, password });
   }
 
+  if (body.action === "update_login_id") {
+    const loginId = body.login_id?.trim() || "";
+
+    if (!isValidLoginId(loginId)) {
+      return json({
+        error: "L’ID deve contenere da 3 a 32 caratteri: lettere, numeri, _ oppure -.",
+      }, 400);
+    }
+
+    const { data: account } = await adminClient
+      .from("player_accounts")
+      .select("user_id, login_id")
+      .eq("player_id", player.id)
+      .maybeSingle();
+
+    if (!account) {
+      return json({ error: "Accesso giocatore non trovato." }, 404);
+    }
+
+    const { data: collision, error: collisionError } = await adminClient
+      .from("player_accounts")
+      .select("user_id")
+      .ilike("login_id", loginId)
+      .neq("user_id", account.user_id)
+      .maybeSingle();
+
+    if (collisionError) {
+      return json({ error: "Impossibile verificare l’ID scelto." }, 500);
+    }
+
+    if (collision) {
+      return json({ error: "Questo ID è già utilizzato da un altro giocatore." }, 409);
+    }
+
+    const oldEmail = playerLoginEmail(account.login_id);
+    const newEmail = playerLoginEmail(loginId);
+
+    if (oldEmail !== newEmail) {
+      const { error: emailError } = await adminClient.auth.admin.updateUserById(
+        account.user_id,
+        { email: newEmail, email_confirm: true }
+      );
+
+      if (emailError) {
+        return json({ error: "Questo ID non è disponibile." }, 409);
+      }
+    }
+
+    const { error: updateError } = await adminClient
+      .from("player_accounts")
+      .update({ login_id: loginId })
+      .eq("user_id", account.user_id);
+
+    if (updateError) {
+      if (oldEmail !== newEmail) {
+        await adminClient.auth.admin.updateUserById(account.user_id, {
+          email: oldEmail,
+          email_confirm: true,
+        });
+      }
+      return json({ error: "Impossibile salvare il nuovo ID." }, 500);
+    }
+
+    return json({ login_id: loginId });
+  }
+
   const { data: existingAccount } = await adminClient
     .from("player_accounts")
     .select("login_id")
@@ -142,18 +218,41 @@ Deno.serve(async (request: Request) => {
     return json({ error: "Questo giocatore ha già un accesso." }, 409);
   }
 
-  let loginId = "";
-  for (let attempt = 0; attempt < 8; attempt += 1) {
-    const candidate = `CT-${randomText(6, "ABCDEFGHJKLMNPQRSTUVWXYZ23456789")}`;
-    const { data: collision } = await adminClient
+  let loginId = body.login_id?.trim() || "";
+
+  if (loginId) {
+    if (!isValidLoginId(loginId)) {
+      return json({
+        error: "L’ID deve contenere da 3 a 32 caratteri: lettere, numeri, _ oppure -.",
+      }, 400);
+    }
+
+    const { data: collision, error: collisionError } = await adminClient
       .from("player_accounts")
       .select("user_id")
-      .eq("login_id", candidate)
+      .ilike("login_id", loginId)
       .maybeSingle();
 
-    if (!collision) {
-      loginId = candidate;
-      break;
+    if (collisionError) {
+      return json({ error: "Impossibile verificare l’ID scelto." }, 500);
+    }
+
+    if (collision) {
+      return json({ error: "Questo ID è già utilizzato da un altro giocatore." }, 409);
+    }
+  } else {
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const candidate = `CT-${randomText(6, "ABCDEFGHJKLMNPQRSTUVWXYZ23456789")}`;
+      const { data: collision } = await adminClient
+        .from("player_accounts")
+        .select("user_id")
+        .eq("login_id", candidate)
+        .maybeSingle();
+
+      if (!collision) {
+        loginId = candidate;
+        break;
+      }
     }
   }
 
@@ -161,7 +260,8 @@ Deno.serve(async (request: Request) => {
     return json({ error: "Impossibile generare un ID univoco." }, 500);
   }
 
-  const email = `${loginId.toLowerCase()}@players.calciototale.invalid`;
+  const password = generatePassword();
+  const email = playerLoginEmail(loginId);
   const { data: created, error: createError } = await adminClient.auth.admin.createUser({
     email,
     password,
@@ -170,7 +270,7 @@ Deno.serve(async (request: Request) => {
   });
 
   if (createError || !created.user) {
-    return json({ error: "Impossibile creare l’account Supabase." }, 500);
+    return json({ error: "Questo ID non è disponibile." }, 409);
   }
 
   const { error: linkError } = await adminClient.from("player_accounts").insert({

@@ -75,6 +75,10 @@ function normalizeLoginId(value: string) {
   return value.trim().toUpperCase();
 }
 
+function isValidLoginId(value: string) {
+  return /^[A-Za-z0-9][A-Za-z0-9_-]{2,31}$/.test(value.trim());
+}
+
 function playerLoginEmail(loginId: string) {
   return `${normalizeLoginId(loginId).toLowerCase()}@players.calciototale.invalid`;
 }
@@ -98,6 +102,7 @@ export default function Home() {
   const [sessionPlayerId, setSessionPlayerId] = useState<string | null>(null);
   const [sessionPlayerName, setSessionPlayerName] = useState("");
   const [playerAccounts, setPlayerAccounts] = useState<PlayerAccount[]>([]);
+  const [loginIdDrafts, setLoginIdDrafts] = useState<Record<string, string>>({});
   const [accountLoadingId, setAccountLoadingId] = useState<string | null>(null);
   const [generatedCredentials, setGeneratedCredentials] =
     useState<GeneratedCredentials | null>(null);
@@ -157,7 +162,17 @@ export default function Home() {
       return;
     }
 
-    setPlayerAccounts((data || []) as PlayerAccount[]);
+    const accounts = (data || []) as PlayerAccount[];
+    setPlayerAccounts(accounts);
+    setLoginIdDrafts((current) => {
+      const next = { ...current };
+      for (const account of accounts) {
+        if (next[account.player_id] === undefined) {
+          next[account.player_id] = account.login_id;
+        }
+      }
+      return next;
+    });
   }, []);
 
   const checkSession = useCallback(async () => {
@@ -298,6 +313,7 @@ export default function Home() {
     setAuthPassword("");
     setAuthError("");
     setPlayerAccounts([]);
+    setLoginIdDrafts({});
     setGeneratedCredentials(null);
     setActiveSection("dashboard");
   }
@@ -338,23 +354,52 @@ export default function Home() {
 
   async function managePlayerAccount(
     player: Player,
-    action: "create" | "reset_password"
+    action: "create" | "reset_password" | "update_login_id"
   ) {
+    const requestedLoginId = (loginIdDrafts[player.id] || "").trim();
+
+    if (
+      (action === "update_login_id" || requestedLoginId) &&
+      !isValidLoginId(requestedLoginId)
+    ) {
+      alert("L’ID deve contenere da 3 a 32 caratteri: lettere, numeri, _ oppure -.");
+      return;
+    }
+
     setAccountLoadingId(player.id);
     setGeneratedCredentials(null);
 
     const { data, error } = await supabase.functions.invoke(
       "manage-player-account",
       {
-        body: { action, player_id: player.id },
+        body: {
+          action,
+          player_id: player.id,
+          login_id: requestedLoginId || undefined,
+        },
       }
     );
 
     setAccountLoadingId(null);
 
-    if (error || !data?.login_id || !data?.password) {
+    if (
+      error ||
+      !data?.login_id ||
+      (action !== "update_login_id" && !data?.password)
+    ) {
       const message = data?.error || error?.message || "Operazione non riuscita.";
       alert(`Errore accesso giocatore:\n${message}`);
+      return;
+    }
+
+    setLoginIdDrafts((current) => ({
+      ...current,
+      [player.id]: data.login_id,
+    }));
+
+    if (action === "update_login_id") {
+      await loadPlayerAccounts();
+      alert(`ID di ${player.name} aggiornato in ${data.login_id}.`);
       return;
     }
 
@@ -1954,7 +1999,7 @@ export default function Home() {
               <div>
                 <h3 className="text-xl font-bold">🔑 Accessi giocatori</h3>
                 <p className="mt-1 text-sm text-slate-500">
-                  Genera un ID e una password personale. La password viene mostrata solo in questo momento.
+                  Scrivi un ID personale oppure lascia il campo vuoto per generarne uno automatico. Ogni ID deve essere unico.
                 </p>
               </div>
 
@@ -1995,7 +2040,7 @@ export default function Home() {
                   return (
                     <div
                       key={player.id}
-                      className="flex flex-col gap-3 rounded-2xl bg-slate-950 p-4 sm:flex-row sm:items-center sm:justify-between"
+                      className="grid gap-4 rounded-2xl bg-slate-950 p-4 lg:grid-cols-[minmax(0,1fr)_minmax(240px,1fr)_auto] lg:items-center"
                     >
                       <div>
                         <p className="font-bold">{player.name}</p>
@@ -2003,21 +2048,65 @@ export default function Home() {
                           {account ? `ID: ${account.login_id}` : "Nessun accesso creato"}
                         </p>
                       </div>
-                      <button
-                        type="button"
-                        disabled={loading}
-                        onClick={() => managePlayerAccount(
-                          player,
-                          account ? "reset_password" : "create"
+                      <div>
+                        <label className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                          ID personale
+                        </label>
+                        <input
+                          type="text"
+                          value={loginIdDrafts[player.id] ?? account?.login_id ?? ""}
+                          onChange={(event) => setLoginIdDrafts((current) => ({
+                            ...current,
+                            [player.id]: event.target.value,
+                          }))}
+                          maxLength={32}
+                          autoCapitalize="none"
+                          autoCorrect="off"
+                          spellCheck={false}
+                          placeholder="es. floryn03 (opzionale)"
+                          className="mt-2 min-h-11 w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 outline-none transition focus:border-emerald-500"
+                        />
+                        <p className="mt-1 text-xs text-slate-600">
+                          {account
+                            ? "Puoi modificarlo e premere Salva ID."
+                            : "Se resta vuoto verrà creato un codice CT automatico."}
+                        </p>
+                      </div>
+                      <div className="flex flex-col gap-2 sm:flex-row lg:flex-col">
+                        {account ? (
+                          <>
+                            <button
+                              type="button"
+                              disabled={
+                                loading ||
+                                !loginIdDrafts[player.id]?.trim() ||
+                                loginIdDrafts[player.id].trim() === account.login_id
+                              }
+                              onClick={() => managePlayerAccount(player, "update_login_id")}
+                              className="min-h-11 touch-manipulation rounded-xl bg-emerald-500 px-5 py-3 text-sm font-black text-slate-950 disabled:opacity-40"
+                            >
+                              {loading ? "⏳ Attendi..." : "💾 Salva ID"}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={loading}
+                              onClick={() => managePlayerAccount(player, "reset_password")}
+                              className="min-h-11 touch-manipulation rounded-xl border border-emerald-500/30 px-5 py-3 text-sm font-bold text-emerald-400 hover:bg-emerald-500/10 disabled:opacity-50"
+                            >
+                              {loading ? "⏳ Attendi..." : "🔄 Nuova password"}
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={loading}
+                            onClick={() => managePlayerAccount(player, "create")}
+                            className="min-h-11 touch-manipulation rounded-xl border border-emerald-500/30 px-5 py-3 text-sm font-bold text-emerald-400 hover:bg-emerald-500/10 disabled:opacity-50"
+                          >
+                            {loading ? "⏳ Attendi..." : "➕ Crea accesso"}
+                          </button>
                         )}
-                        className="min-h-11 touch-manipulation rounded-xl border border-emerald-500/30 px-5 py-3 text-sm font-bold text-emerald-400 hover:bg-emerald-500/10 disabled:opacity-50"
-                      >
-                        {loading
-                          ? "⏳ Attendi..."
-                          : account
-                            ? "🔄 Nuova password"
-                            : "➕ Crea accesso"}
-                      </button>
+                      </div>
                     </div>
                   );
                 })}
