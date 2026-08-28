@@ -2267,7 +2267,7 @@ export default function Home() {
                   label="ID giocatore"
                   value={playerLoginId}
                   onChange={setPlayerLoginId}
-                  placeholder="Es. CT-AB12"
+                  placeholder="Es. floryn03 o CT-AB12"
                 />
                 <Input
                   label="Password"
