@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 22406)
-Total output lines: 2948
-
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -1418,7 +1415,292 @@ export default function Home() {
                       onChange={(e) =>
                         setPosition(e.target.value)
                       }
-                      className="w-full rounded-xl…2406 tokens truncated…      </table>
+                      className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-emerald-500"
+                    >
+                      <option value="">
+                        Seleziona posizione
+                      </option>
+
+                      {positions.map((item) => (
+                        <option
+                          key={item.value}
+                          value={item.value}
+                        >
+                          {item.label}
+                        </option>
+                      ))}
+
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold">
+                      Stato
+                    </label>
+
+                    <select
+                      value={status}
+                      onChange={(e) =>
+                        setStatus(e.target.value)
+                      }
+                      className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-emerald-500"
+                    >
+                      <option value="Attivo">
+                        🟢 Attivo
+                      </option>
+
+                      <option value="Inattivo">
+                        🔴 Inattivo
+                      </option>
+
+                    </select>
+                  </div>
+
+                </div>
+
+                <div className="mt-7 flex gap-3">
+
+                  <button
+                    onClick={closePlayerForm}
+                    className="rounded-xl border border-slate-700 px-6 py-3 font-semibold hover:bg-slate-800"
+                  >
+                    Annulla
+                  </button>
+
+                  <button
+                    onClick={savePlayer}
+                    disabled={saving}
+                    className="rounded-xl bg-emerald-500 px-6 py-3 font-black text-slate-950 hover:bg-emerald-400 disabled:opacity-50"
+                  >
+                    {saving
+                      ? "⏳ Salvataggio..."
+                      : editingPlayer
+                      ? "💾 Salva modifiche"
+                      : "💾 Salva giocatore"}
+                  </button>
+
+                </div>
+
+              </div>
+            )}
+
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="🔎 Cerca per nome, PSN o posizione..."
+              className="mb-6 w-full rounded-xl border border-slate-800 bg-slate-900 px-5 py-4 outline-none focus:border-emerald-500"
+            />
+
+            {loadingPlayers ? (
+              <Loading />
+            ) : filteredPlayers.length === 0 ? (
+              <EmptyState
+                icon="⚽"
+                title="Nessun giocatore"
+                text="Non ci sono giocatori da visualizzare."
+              />
+            ) : (
+              <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+
+                {filteredPlayers.map((player) => (
+                  <PlayerCard
+                    key={player.id}
+                    player={player}
+                    onDelete={deletePlayer}
+                    onToggleStatus={togglePlayerStatus}
+                    onEdit={openEditPlayer}
+                    onProfile={setProfilePlayer}
+                    canManage={isAdmin}
+                  />
+                ))}
+
+              </div>
+            )}
+
+          </div>
+        )}
+
+        {/* =====================================================
+            PRESENCES
+        ===================================================== */}
+
+        {activeSection === "presences" && (
+          <div>
+
+            <PageHeader
+              eyebrow="CALCIO TOTALE"
+              title="✅ Presenze"
+              description="Gestisci la disponibilità dei giocatori per ogni giornata."
+            />
+
+            <div className="mb-6 grid gap-5 md:grid-cols-2">
+
+              <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
+
+                <label className="mb-2 block text-sm font-semibold">
+                  Evento
+                </label>
+
+                <select
+                  value={selectedEventId}
+                  onChange={(e) => setSelectedEventId(e.target.value)}
+                  className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3"
+                >
+                  <option value="">Seleziona un evento</option>
+
+                  {events.map((event) => (
+                    <option key={event.id} value={event.id}>
+                      {event.name} — {event.event_date}
+                      {event.event_time ? ` — ${event.event_time}` : ""}
+                    </option>
+                  ))}
+                </select>
+
+                {events.length === 0 && (
+                  <p className="mt-2 text-sm text-slate-500">
+                    Non ci sono eventi disponibili.
+                  </p>
+                )}
+
+              </div>
+
+              <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
+
+                <p className="text-sm text-slate-500">
+                  Riepilogo
+                </p>
+
+                <div className="mt-3 flex flex-wrap gap-3">
+
+                  <Badge
+                    text={`🟢 ${presentPlayers.length} Presenti`}
+                  />
+
+                  <Badge
+                    text={`🔴 ${absentPlayers.length} Assenti`}
+                  />
+
+                  <Badge
+                    text={`🟡 ${uncertainPlayers.length} In dubbio`}
+                  />
+
+                </div>
+
+              </div>
+
+            </div>
+
+            {loadingPresences ? (
+              <Loading />
+            ) : (
+              <div className="overflow-hidden rounded-3xl border border-slate-800">
+
+                <div className="overflow-x-auto">
+
+                  <table className="w-full">
+
+                    <thead className="bg-slate-900">
+
+                      <tr className="text-left text-sm text-slate-400">
+
+                        <th className="px-5 py-4">
+                          Giocatore
+                        </th>
+
+                        <th className="px-5 py-4">
+                          Posizione
+                        </th>
+
+                        <th className="px-5 py-4">
+                          Stato
+                        </th>
+
+                        <th className="px-5 py-4">
+                          Azione
+                        </th>
+
+                      </tr>
+
+                    </thead>
+
+                    <tbody>
+
+                      {presencePlayers
+                        .filter(
+                          (player) =>
+                            player.status === "Attivo"
+                        )
+                        .map((player) => {
+
+                          const presence =
+                            getPresence(player.id);
+
+                          return (
+                            <tr
+                              key={player.id}
+                              className="border-t border-slate-800"
+                            >
+
+                              <td className="px-5 py-4">
+
+                                <div className="font-bold">
+                                  {player.name}
+                                </div>
+
+                                <div className="text-xs text-slate-500">
+                                  {player.psn_id}
+                                </div>
+
+                              </td>
+
+                              <td className="px-5 py-4">
+                                {player.position}
+                              </td>
+
+                              <td className="px-5 py-4">
+                                <PresenceBadge
+                                  status={
+                                    presence?.status ||
+                                    "Da confermare"
+                                  }
+                                />
+                              </td>
+
+                              <td className="px-5 py-4">
+
+                                {(isAdmin || player.id === sessionPlayerId) ? (
+                                  <div className="flex flex-wrap gap-2">
+                                    <PresenceButton
+                                      text="🟢"
+                                      active={presence?.status === "Presente"}
+                                      onClick={() => savePresence(player, "Presente")}
+                                    />
+                                    <PresenceButton
+                                      text="🔴"
+                                      active={presence?.status === "Assente"}
+                                      onClick={() => savePresence(player, "Assente")}
+                                    />
+                                    <PresenceButton
+                                      text="🟡"
+                                      active={presence?.status === "In dubbio"}
+                                      onClick={() => savePresence(player, "In dubbio")}
+                                    />
+                                  </div>
+                                ) : (
+                                  <span className="text-sm text-slate-500">
+                                    Sola lettura
+                                  </span>
+                                )}
+
+                              </td>
+
+                            </tr>
+                          );
+                        })}
+
+                    </tbody>
+
+                  </table>
 
                 </div>
 
