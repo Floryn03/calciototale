@@ -141,6 +141,7 @@ export default function Home() {
   const [loadingPresences, setLoadingPresences] = useState(true);
 
   const [saving, setSaving] = useState(false);
+  const [resettingPresences, setResettingPresences] = useState(false);
 
   const [showPlayerForm, setShowPlayerForm] = useState(false);
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
@@ -895,6 +896,38 @@ export default function Home() {
         setPresences((current) => [...current, data]);
       }
     }
+  }
+
+  async function resetSelectedEventPresences() {
+    if (!selectedEventId) {
+      alert("Seleziona prima un evento nella sezione Presenze.");
+      return;
+    }
+
+    const selectedEvent = events.find((event) => event.id === selectedEventId);
+    if (!selectedEvent) {
+      alert("L'evento selezionato non è disponibile.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Vuoi riportare a “Da confermare” tutte le presenze dell'evento ${selectedEvent.name} del ${selectedEvent.event_date}?\n\nNon verranno modificati altri eventi, giocatori o note.`
+    );
+    if (!confirmed) return;
+
+    setResettingPresences(true);
+    const { data, error } = await supabase.functions.invoke("reset-event-presences", {
+      body: { event_id: selectedEvent.id },
+    });
+    setResettingPresences(false);
+
+    if (error) {
+      alert(`Impossibile reimpostare le presenze:\n${error.message}`);
+      return;
+    }
+
+    await loadPresences();
+    alert(`${data?.reset_count || 0} presenze riportate a “Da confermare”.`);
   }
 
   const presentPlayers = players.filter(
@@ -2350,6 +2383,17 @@ export default function Home() {
                   className="rounded-xl border border-slate-700 px-5 py-3 hover:bg-slate-800"
                 >
                   🔄 Ricarica presenze
+                </button>
+
+                <button
+                  type="button"
+                  onClick={resetSelectedEventPresences}
+                  disabled={resettingPresences}
+                  className="rounded-xl border border-amber-400/40 px-5 py-3 font-semibold text-amber-300 hover:bg-amber-400/10 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {resettingPresences
+                    ? "⏳ Reimpostazione…"
+                    : "↺ Reimposta presenze evento"}
                 </button>
               </div>
             </div>
