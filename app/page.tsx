@@ -1,8 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import { supabase } from "../lib/supabase";
 import VotingHub from "../components/VotingHub";
+import PlayerProfileModal from "../components/PlayerProfileModal";
 
 type Player = {
   id: string;
@@ -142,6 +144,7 @@ export default function Home() {
 
   const [showPlayerForm, setShowPlayerForm] = useState(false);
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
+  const [profilePlayer, setProfilePlayer] = useState<Player | null>(null);
 
   const [name, setName] = useState("");
   const [psnId, setPsnId] = useState("");
@@ -1030,18 +1033,22 @@ export default function Home() {
 
           <button
             onClick={() => setActiveSection("dashboard")}
-            className="text-left"
+            className="flex items-center gap-3 text-left"
           >
-            <h1 className="text-2xl font-black">
-              ⚽ CALCIO{" "}
-              <span className="text-emerald-400">
-                TOTALE
-              </span>
-            </h1>
-
-            <p className="text-xs text-slate-500">
-              Team Management System
-            </p>
+            <Image
+              src="/calcio-totale-2026-logo.png"
+              alt="Logo ufficiale Calcio Totale 2026"
+              width={56}
+              height={56}
+              priority
+              className="h-12 w-12 object-contain sm:h-14 sm:w-14"
+            />
+            <div>
+              <h1 className="text-2xl font-black">
+                CALCIO <span className="text-emerald-400">TOTALE</span>
+              </h1>
+              <p className="text-xs text-slate-500">Team Management System</p>
+            </div>
           </button>
 
           <div className="flex items-center gap-3">
@@ -1131,6 +1138,15 @@ export default function Home() {
           <div>
 
             <div className="mb-10">
+
+              <Image
+                src="/calcio-totale-2026-logo.png"
+                alt="Logo ufficiale Calcio Totale 2026"
+                width={160}
+                height={160}
+                priority
+                className="mx-auto mb-6 h-32 w-32 object-contain sm:h-40 sm:w-40"
+              />
 
               <p className="mb-3 font-bold uppercase tracking-[0.3em] text-emerald-400">
                 CALCIO TOTALE
@@ -1491,6 +1507,7 @@ export default function Home() {
                     onDelete={deletePlayer}
                     onToggleStatus={togglePlayerStatus}
                     onEdit={openEditPlayer}
+                    onProfile={setProfilePlayer}
                     canManage={isAdmin}
                   />
                 ))}
@@ -2498,6 +2515,13 @@ export default function Home() {
           </div>
         )}
 
+        {profilePlayer && (
+          <PlayerProfileModal
+            player={profilePlayer}
+            onClose={() => setProfilePlayer(null)}
+          />
+        )}
+
       </section>
     </main>
   );
@@ -2670,12 +2694,14 @@ function PlayerCard({
   onDelete,
   onToggleStatus,
   onEdit,
+  onProfile,
   canManage,
 }: {
   player: Player;
   onDelete: (player: Player) => void;
   onToggleStatus: (player: Player) => void;
   onEdit: (player: Player) => void;
+  onProfile: (player: Player) => void;
   canManage: boolean;
 }) {
   const isActive = player.status === "Attivo";
@@ -2742,6 +2768,14 @@ function PlayerCard({
         )}
 
       </div>
+
+      <button
+        type="button"
+        onClick={() => onProfile(player)}
+        className="mt-5 min-h-11 w-full rounded-xl border border-emerald-500/30 px-4 py-3 text-sm font-bold text-emerald-300 transition hover:bg-emerald-500/10"
+      >
+        🪪 Vedi card giocatore
+      </button>
 
       {canManage && (
       <div className="mt-5 grid grid-cols-2 gap-2">
