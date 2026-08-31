@@ -398,7 +398,7 @@ export default function VotingHub({
         <section className="rounded-3xl border border-amber-400/30 bg-gradient-to-br from-amber-400/10 via-slate-900 to-emerald-500/10 p-6 sm:p-8">
           <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
             <div className="flex items-center gap-4">
-              <Image src="/calcio-totale-2026-logo.png" alt="Logo ufficiale Calcio Totale 2026" width={96} height={96} className="h-20 w-20 shrink-0 object-contain sm:h-24 sm:w-24" />
+              <Image src="/calcio-totale-2026-logo.png" alt="Logo ufficiale Calcio Totale 2026" width={96} height={96} unoptimized className="h-20 w-20 shrink-0 object-contain sm:h-24 sm:w-24" />
               <div>
                 <p className="text-sm font-black uppercase tracking-[0.2em] text-amber-300">CALCIO TOTALE</p>
                 <h2 className="mt-2 text-3xl font-black">👑 MVP e Top 11</h2>
@@ -444,7 +444,7 @@ export default function VotingHub({
         </section>
 
         <section className="rounded-3xl border border-emerald-400/25 bg-slate-900 p-4 sm:p-7">
-          <div className="mb-5 flex flex-col items-center text-center"><Image src="/calcio-totale-2026-logo.png" alt="Logo ufficiale Calcio Totale 2026" width={64} height={64} className="mb-2 h-16 w-16 object-contain" /><p className="text-sm font-black tracking-[0.2em] text-emerald-300">🏆 TOP 11 DELLA SETTIMANA</p><h3 className="mt-1 text-2xl font-black">Modulo ufficiale 3-5-2</h3></div>
+          <div className="mb-5 flex flex-col items-center text-center"><Image src="/calcio-totale-2026-logo.png" alt="Logo ufficiale Calcio Totale 2026" width={64} height={64} unoptimized className="mb-2 h-16 w-16 object-contain" /><p className="text-sm font-black tracking-[0.2em] text-emerald-300">🏆 TOP 11 DELLA SETTIMANA</p><h3 className="mt-1 text-2xl font-black">Modulo ufficiale 3-5-2</h3></div>
           <div className="rounded-3xl border border-emerald-200/15 bg-gradient-to-b from-emerald-700/35 via-emerald-800/25 to-emerald-950 p-3 sm:p-6">
             <div className="mx-auto grid max-w-3xl gap-4 text-center">
               <div className="mx-auto grid w-full max-w-sm grid-cols-2 gap-3"><TopCard slot={byPosition.get("ATT (PS)")!} /><TopCard slot={byPosition.get("ATT (PD)")!} /></div>
@@ -463,7 +463,7 @@ export default function VotingHub({
   return (
     <div className="space-y-7">
       <section className="rounded-3xl border border-emerald-400/25 bg-gradient-to-br from-emerald-400/10 via-slate-900 to-slate-900 p-6 sm:p-8">
-        <div className="flex items-center gap-4"><Image src="/calcio-totale-2026-logo.png" alt="Logo ufficiale Calcio Totale 2026" width={96} height={96} className="h-20 w-20 shrink-0 object-contain sm:h-24 sm:w-24" /><div><p className="text-sm font-black uppercase tracking-[0.2em] text-emerald-300">CALCIO TOTALE</p><h2 className="mt-2 text-3xl font-black">⭐ Votazioni partita</h2><p className="mt-2 text-sm text-slate-400">Voti, commenti, media e classifica sono salvati nel database.</p></div></div>
+        <div className="flex items-center gap-4"><Image src="/calcio-totale-2026-logo.png" alt="Logo ufficiale Calcio Totale 2026" width={96} height={96} unoptimized className="h-20 w-20 shrink-0 object-contain sm:h-24 sm:w-24" /><div><p className="text-sm font-black uppercase tracking-[0.2em] text-emerald-300">CALCIO TOTALE</p><h2 className="mt-2 text-3xl font-black">⭐ Votazioni partita</h2><p className="mt-2 text-sm text-slate-400">Voti, commenti, media e classifica sono salvati nel database.</p></div></div>
         <div className="mt-5 grid gap-3 md:grid-cols-2">
           <select value={selectedMatchId} onChange={(event) => setSelectedMatchId(event.target.value)} className="min-h-11 rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm font-bold">
             <option value="">Seleziona una partita</option>
