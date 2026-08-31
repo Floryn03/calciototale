@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
+import VotingHub from "../components/VotingHub";
 
 type Player = {
   id: string;
@@ -39,6 +40,19 @@ type PlayerAccount = {
 type GeneratedCredentials = {
   playerId: string;
   playerName: string;
+  loginId: string;
+  password: string;
+};
+
+type AdminAccount = {
+  user_id: string;
+  login_id: string;
+  display_name: string | null;
+  created_at: string;
+};
+
+type GeneratedAdminCredentials = {
+  displayName: string;
   loginId: string;
   password: string;
 };
@@ -83,6 +97,10 @@ function playerLoginEmail(loginId: string) {
   return `${normalizeLoginId(loginId).toLowerCase()}@players.calciototale.invalid`;
 }
 
+function adminLoginEmail(loginId: string) {
+  return `${loginId.trim().toLowerCase()}@admins.calciototale.invalid`;
+}
+
 export default function Home() {
   const [activeSection, setActiveSection] = useState("dashboard");
 
@@ -94,6 +112,7 @@ export default function Home() {
   const [authPassword, setAuthPassword] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isOwner, setIsOwner] = useState(false);
   const [authError, setAuthError] = useState("");
   const [showPlayerLogin, setShowPlayerLogin] = useState(false);
   const [playerLoginId, setPlayerLoginId] = useState("");
@@ -106,6 +125,12 @@ export default function Home() {
   const [accountLoadingId, setAccountLoadingId] = useState<string | null>(null);
   const [generatedCredentials, setGeneratedCredentials] =
     useState<GeneratedCredentials | null>(null);
+  const [adminAccounts, setAdminAccounts] = useState<AdminAccount[]>([]);
+  const [newAdminName, setNewAdminName] = useState("");
+  const [newAdminLoginId, setNewAdminLoginId] = useState("");
+  const [adminAccountLoadingId, setAdminAccountLoadingId] = useState<string | null>(null);
+  const [generatedAdminCredentials, setGeneratedAdminCredentials] =
+    useState<GeneratedAdminCredentials | null>(null);
 
   const [players, setPlayers] = useState<Player[]>([]);
   const [presences, setPresences] = useState<Presence[]>([]);
@@ -175,6 +200,21 @@ export default function Home() {
     });
   }, []);
 
+  const loadAdminAccounts = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("admin_accounts")
+      .select("user_id, login_id, display_name, created_at")
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      console.error("Errore caricamento accessi amministratori:", error);
+      setAdminAccounts([]);
+      return;
+    }
+
+    setAdminAccounts((data || []) as AdminAccount[]);
+  }, []);
+
   const checkSession = useCallback(async () => {
     const {
       data: { user },
@@ -182,6 +222,7 @@ export default function Home() {
 
     if (!user) {
       setIsAdmin(false);
+      setIsOwner(false);
       setSessionPlayerId(null);
       setSessionPlayerName("");
       return;
@@ -189,15 +230,19 @@ export default function Home() {
 
     const { data: profile, error } = await supabase
       .from("profiles")
-      .select("role")
+      .select("role, is_owner")
       .eq("id", user.id)
       .single();
 
     if (!error && profile?.role === "admin") {
       setIsAdmin(true);
+      setIsOwner(Boolean(profile.is_owner));
       setSessionPlayerId(null);
       setSessionPlayerName("");
-      await loadPlayerAccounts();
+      await Promise.all([
+        loadPlayerAccounts(),
+        profile.is_owner ? loadAdminAccounts() : Promise.resolve(),
+      ]);
     } else {
       const { data: account, error: accountError } = await supabase
         .from("player_accounts")
@@ -207,54 +252,70 @@ export default function Home() {
 
       if (!accountError && account) {
         setIsAdmin(false);
+        setIsOwner(false);
         setSessionPlayerId(account.player_id);
         setSessionPlayerName(account.login_id);
       } else {
         await supabase.auth.signOut();
         setIsAdmin(false);
+        setIsOwner(false);
         setSessionPlayerId(null);
         setSessionPlayerName("");
       }
     }
-  }, [loadPlayerAccounts]);
+  }, [loadAdminAccounts, loadPlayerAccounts]);
 
   async function handleAdminLogin() {
+    const identifier = authEmail.trim();
+
+    if (!identifier.includes("@") && !isValidLoginId(identifier)) {
+      setAuthError("Inserisci un’email o un ID amministratore valido.");
+      return;
+    }
+
     setAuthLoading(true);
     setAuthError("");
 
     const { data, error } = await supabase.auth.signInWithPassword({
-      email: authEmail.trim(),
+      email: identifier.includes("@")
+        ? identifier.toLowerCase()
+        : adminLoginEmail(identifier),
       password: authPassword,
     });
 
     if (error || !data.user) {
-      setAuthError("Email o password non corretti.");
+      setAuthError("Email/ID o password non corretti.");
       setAuthLoading(false);
       return;
     }
 
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("role")
+      .select("role, is_owner")
       .eq("id", data.user.id)
       .single();
 
     if (profileError || profile?.role !== "admin") {
       await supabase.auth.signOut();
       setIsAdmin(false);
+      setIsOwner(false);
       setAuthError("Accesso negato: questo utente non è amministratore.");
       setAuthLoading(false);
       return;
     }
 
     setIsAdmin(true);
+    setIsOwner(Boolean(profile.is_owner));
     setSessionPlayerId(null);
     setSessionPlayerName("");
     setShowLogin(false);
     setAuthPassword("");
     setAuthError("");
     setActiveSection("admin");
-    await loadPlayerAccounts();
+    await Promise.all([
+      loadPlayerAccounts(),
+      profile.is_owner ? loadAdminAccounts() : Promise.resolve(),
+    ]);
     setAuthLoading(false);
   }
 
@@ -294,6 +355,7 @@ export default function Home() {
     }
 
     setIsAdmin(false);
+    setIsOwner(false);
     setSessionPlayerId(account.player_id);
     setSessionPlayerName(account.login_id);
     setShowPlayerLogin(false);
@@ -308,6 +370,7 @@ export default function Home() {
   async function handleAdminLogout() {
     await supabase.auth.signOut();
     setIsAdmin(false);
+    setIsOwner(false);
     setShowLogin(false);
     setAuthEmail("");
     setAuthPassword("");
@@ -315,11 +378,16 @@ export default function Home() {
     setPlayerAccounts([]);
     setLoginIdDrafts({});
     setGeneratedCredentials(null);
+    setAdminAccounts([]);
+    setNewAdminName("");
+    setNewAdminLoginId("");
+    setGeneratedAdminCredentials(null);
     setActiveSection("dashboard");
   }
 
   async function handlePlayerLogout() {
     await supabase.auth.signOut();
+    setIsOwner(false);
     setSessionPlayerId(null);
     setSessionPlayerName("");
     setShowPlayerLogin(false);
@@ -341,6 +409,7 @@ export default function Home() {
     } = supabase.auth.onAuthStateChange((event) => {
       if (event === "SIGNED_OUT") {
         setIsAdmin(false);
+        setIsOwner(false);
         setSessionPlayerId(null);
         setSessionPlayerName("");
       }
@@ -411,6 +480,58 @@ export default function Home() {
     });
 
     await loadPlayerAccounts();
+  }
+
+  async function manageAdminAccount(
+    action: "create" | "reset_password",
+    account?: AdminAccount
+  ) {
+    const loginId = newAdminLoginId.trim();
+
+    if (action === "create" && loginId && !isValidLoginId(loginId)) {
+      alert("L’ID Admin deve contenere da 3 a 32 caratteri: lettere, numeri, _ oppure -.");
+      return;
+    }
+
+    setAdminAccountLoadingId(account?.user_id || "new");
+    setGeneratedAdminCredentials(null);
+
+    const { data, error } = await supabase.functions.invoke(
+      "manage-admin-account",
+      {
+        body: action === "create"
+          ? {
+              action,
+              login_id: loginId || undefined,
+              display_name: newAdminName.trim() || undefined,
+            }
+          : {
+              action,
+              user_id: account?.user_id,
+            },
+      }
+    );
+
+    setAdminAccountLoadingId(null);
+
+    if (error || !data?.login_id || !data?.password) {
+      const message = data?.error || error?.message || "Operazione non riuscita.";
+      alert(`Errore accesso amministratore:\n${message}`);
+      return;
+    }
+
+    setGeneratedAdminCredentials({
+      displayName: data.display_name || account?.display_name || data.login_id,
+      loginId: data.login_id,
+      password: data.password,
+    });
+
+    if (action === "create") {
+      setNewAdminName("");
+      setNewAdminLoginId("");
+    }
+
+    await loadAdminAccounts();
   }
 
   // =========================================================
@@ -886,10 +1007,10 @@ export default function Home() {
     ? menu
     : isPlayer
       ? menu.filter((item) =>
-          ["dashboard", "presences", "events"].includes(item.id)
+          ["dashboard", "presences", "events", "votes", "mvp"].includes(item.id)
         )
       : menu.filter((item) =>
-          ["dashboard", "events", "stats"].includes(item.id)
+          ["dashboard", "events", "votes", "mvp", "stats"].includes(item.id)
         );
   const presencePlayers = isPlayer
     ? players.filter((player) => player.id === sessionPlayerId)
@@ -1808,33 +1929,12 @@ export default function Home() {
         ===================================================== */}
 
         {activeSection === "votes" && (
-          <ModulePage
-            icon="⭐"
-            title="Votazioni"
-            text="Sistema di votazione dei giocatori dopo ogni partita."
-          >
-            <div className="grid gap-5 md:grid-cols-3">
-
-              <InfoBox
-                icon="⭐"
-                title="Voto partita"
-                text="Ogni giocatore potrà ricevere una valutazione."
-              />
-
-              <InfoBox
-                icon="🎯"
-                title="Prestazione"
-                text="Valuta la prestazione tecnica e tattica."
-              />
-
-              <InfoBox
-                icon="🤝"
-                title="Fair Play"
-                text="Premia comportamento e spirito di squadra."
-              />
-
-            </div>
-          </ModulePage>
+          <VotingHub
+            players={players}
+            matches={events}
+            isAdmin={isAdmin}
+            view="votes"
+          />
         )}
 
         {/* =====================================================
@@ -1842,30 +1942,12 @@ export default function Home() {
         ===================================================== */}
 
         {activeSection === "mvp" && (
-          <ModulePage
-            icon="👑"
-            title="MVP"
-            text="Gestione del miglior giocatore della settimana e della stagione."
-          >
-
-            <div className="rounded-3xl border border-yellow-500/20 bg-yellow-500/5 p-10 text-center">
-
-              <div className="text-7xl">
-                👑
-              </div>
-
-              <h3 className="mt-5 text-3xl font-black">
-                MVP DELLA SETTIMANA
-              </h3>
-
-              <p className="mt-3 text-slate-400">
-                Le votazioni determineranno automaticamente
-                il prossimo MVP.
-              </p>
-
-            </div>
-
-          </ModulePage>
+          <VotingHub
+            players={players}
+            matches={events}
+            isAdmin={isAdmin}
+            view="mvp"
+          />
         )}
 
         {/* =====================================================
@@ -2113,6 +2195,128 @@ export default function Home() {
               </div>
             </div>
 
+            {isOwner && (
+              <div className="mt-8 rounded-3xl border border-amber-500/30 bg-slate-900 p-7">
+                <div>
+                  <h3 className="text-xl font-bold">👑 Accessi amministratori</h3>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Crea i tre accessi Admin separati. Solo il proprietario può gestire questa sezione.
+                  </p>
+                </div>
+
+                <div className="mt-5 grid gap-3 lg:grid-cols-[1fr_1fr_auto] lg:items-end">
+                  <div>
+                    <label className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                      Nome amministratore
+                    </label>
+                    <input
+                      type="text"
+                      value={newAdminName}
+                      onChange={(event) => setNewAdminName(event.target.value)}
+                      maxLength={50}
+                      placeholder="Es. Vice allenatore"
+                      className="mt-2 min-h-11 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none transition focus:border-amber-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                      ID Admin
+                    </label>
+                    <input
+                      type="text"
+                      value={newAdminLoginId}
+                      onChange={(event) => setNewAdminLoginId(event.target.value)}
+                      maxLength={32}
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      placeholder="Es. admin1 (opzionale)"
+                      className="mt-2 min-h-11 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none transition focus:border-amber-400"
+                    />
+                    <p className="mt-1 text-xs text-slate-600">
+                      Se resta vuoto verrà creato un codice ADM automatico.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={adminAccountLoadingId === "new"}
+                    onClick={() => manageAdminAccount("create")}
+                    className="min-h-11 touch-manipulation rounded-xl bg-amber-400 px-5 py-3 text-sm font-black text-slate-950 hover:bg-amber-300 disabled:opacity-50"
+                  >
+                    {adminAccountLoadingId === "new"
+                      ? "⏳ Creazione..."
+                      : "➕ Crea Admin"}
+                  </button>
+                </div>
+
+                {generatedAdminCredentials && (
+                  <div className="mt-5 rounded-2xl border border-amber-400/40 bg-amber-400/10 p-5">
+                    <p className="font-black text-amber-300">
+                      Credenziali Admin per {generatedAdminCredentials.displayName}
+                    </p>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-xl bg-slate-950 p-4">
+                        <p className="text-xs uppercase text-slate-500">ID amministratore</p>
+                        <p className="mt-1 font-mono text-lg font-bold">
+                          {generatedAdminCredentials.loginId}
+                        </p>
+                      </div>
+                      <div className="rounded-xl bg-slate-950 p-4">
+                        <p className="text-xs uppercase text-slate-500">Password temporanea</p>
+                        <p className="mt-1 break-all font-mono text-lg font-bold">
+                          {generatedAdminCredentials.password}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => navigator.clipboard.writeText(
+                        `Calcio Totale — Admin\nID: ${generatedAdminCredentials.loginId}\nPassword: ${generatedAdminCredentials.password}\nhttps://calciototale.vercel.app`
+                      )}
+                      className="mt-4 min-h-11 touch-manipulation rounded-xl bg-amber-400 px-5 py-3 font-black text-slate-950"
+                    >
+                      📋 Copia credenziali Admin
+                    </button>
+                  </div>
+                )}
+
+                <div className="mt-6 space-y-3">
+                  {adminAccounts.length === 0 ? (
+                    <p className="rounded-2xl bg-slate-950 p-4 text-sm text-slate-500">
+                      Nessun Admin aggiuntivo creato.
+                    </p>
+                  ) : (
+                    adminAccounts.map((account) => {
+                      const loading = adminAccountLoadingId === account.user_id;
+                      return (
+                        <div
+                          key={account.user_id}
+                          className="flex flex-col gap-3 rounded-2xl bg-slate-950 p-4 sm:flex-row sm:items-center sm:justify-between"
+                        >
+                          <div>
+                            <p className="font-bold">
+                              {account.display_name || "Amministratore"}
+                            </p>
+                            <p className="mt-1 text-sm text-slate-500">
+                              ID: {account.login_id}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            disabled={loading}
+                            onClick={() => manageAdminAccount("reset_password", account)}
+                            className="min-h-11 touch-manipulation rounded-xl border border-amber-400/30 px-5 py-3 text-sm font-bold text-amber-300 hover:bg-amber-400/10 disabled:opacity-50"
+                          >
+                            {loading ? "⏳ Attendi..." : "🔄 Nuova password"}
+                          </button>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            )}
+
             <div className="mt-8 rounded-3xl border border-slate-800 bg-slate-900 p-7">
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
@@ -2167,7 +2371,7 @@ export default function Home() {
                     🔐 Login Amministratore
                   </h2>
                   <p className="mt-2 text-sm text-slate-400">
-                    Accedi con il tuo account Supabase.
+                    Usa la tua email oppure l’ID Admin ricevuto dal proprietario.
                   </p>
                 </div>
 
@@ -2193,11 +2397,10 @@ export default function Home() {
                 className="mt-7 space-y-5"
               >
                 <Input
-                  label="Email"
+                  label="Email o ID amministratore"
                   value={authEmail}
                   onChange={setAuthEmail}
-                  placeholder="babei.florin@me.com"
-                  type="email"
+                  placeholder="Es. admin1 o nome@email.com"
                 />
 
                 <Input
@@ -2663,60 +2866,6 @@ function EmptyState({
       </h3>
 
       <p className="mt-2 text-slate-500">
-        {text}
-      </p>
-
-    </div>
-  );
-}
-
-function ModulePage({
-  icon,
-  title,
-  text,
-  children,
-}: {
-  icon: string;
-  title: string;
-  text: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div>
-
-      <PageHeader
-        eyebrow="CALCIO TOTALE"
-        title={`${icon} ${title}`}
-        description={text}
-      />
-
-      {children}
-
-    </div>
-  );
-}
-
-function InfoBox({
-  icon,
-  title,
-  text,
-}: {
-  icon: string;
-  title: string;
-  text: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
-
-      <div className="text-4xl">
-        {icon}
-      </div>
-
-      <h3 className="mt-5 text-xl font-bold">
-        {title}
-      </h3>
-
-      <p className="mt-2 text-sm leading-6 text-slate-500">
         {text}
       </p>
 

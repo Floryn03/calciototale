@@ -1,0 +1,234 @@
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { createClient } from "npm:@supabase/supabase-js@2.112.4";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
+function json(body: Record<string, unknown>, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      ...corsHeaders,
+      "Content-Type": "application/json",
+      "Cache-Control": "private, no-store",
+    },
+  });
+}
+
+function randomText(length: number, alphabet: string) {
+  const values = new Uint32Array(length);
+  crypto.getRandomValues(values);
+  return Array.from(values, (value) => alphabet[value % alphabet.length]).join("");
+}
+
+function generatePassword() {
+  const upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+  const lower = "abcdefghijkmnopqrstuvwxyz";
+  const digits = "23456789";
+  const symbols = "!@#$%";
+  const all = upper + lower + digits + symbols;
+  const required = [
+    randomText(1, upper),
+    randomText(1, lower),
+    randomText(1, digits),
+    randomText(1, symbols),
+    randomText(10, all),
+  ].join("");
+
+  return required
+    .split("")
+    .map((character) => ({
+      character,
+      order: crypto.getRandomValues(new Uint32Array(1))[0],
+    }))
+    .sort((a, b) => a.order - b.order)
+    .map(({ character }) => character)
+    .join("");
+}
+
+function isValidLoginId(value: string) {
+  return /^[A-Za-z0-9][A-Za-z0-9_-]{2,31}$/.test(value);
+}
+
+function adminLoginEmail(loginId: string) {
+  return `${loginId.toLowerCase()}@admins.calciototale.invalid`;
+}
+
+Deno.serve(async (request: Request) => {
+  if (request.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+
+  if (request.method !== "POST") {
+    return json({ error: "Metodo non consentito." }, 405);
+  }
+
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  const authorization = request.headers.get("Authorization");
+
+  if (!supabaseUrl || !serviceRoleKey || !authorization?.startsWith("Bearer ")) {
+    return json({ error: "Accesso non autorizzato." }, 401);
+  }
+
+  const adminClient = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  const token = authorization.slice("Bearer ".length);
+  const {
+    data: { user },
+    error: userError,
+  } = await adminClient.auth.getUser(token);
+
+  if (userError || !user) {
+    return json({ error: "Sessione non valida." }, 401);
+  }
+
+  const { data: profile } = await adminClient
+    .from("profiles")
+    .select("role, is_owner")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (profile?.role !== "admin" || !profile.is_owner) {
+    return json({ error: "Operazione riservata al proprietario." }, 403);
+  }
+
+  let body: {
+    action?: string;
+    user_id?: string;
+    login_id?: string;
+    display_name?: string;
+  };
+
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Richiesta non valida." }, 400);
+  }
+
+  if (!body.action || !["create", "reset_password"].includes(body.action)) {
+    return json({ error: "Azione non valida." }, 400);
+  }
+
+  if (body.action === "reset_password") {
+    if (!body.user_id) {
+      return json({ error: "Amministratore non valido." }, 400);
+    }
+
+    const { data: account } = await adminClient
+      .from("admin_accounts")
+      .select("user_id, login_id, display_name")
+      .eq("user_id", body.user_id)
+      .maybeSingle();
+
+    if (!account) {
+      return json({ error: "Account amministratore non trovato." }, 404);
+    }
+
+    const password = generatePassword();
+    const { error } = await adminClient.auth.admin.updateUserById(
+      account.user_id,
+      { password }
+    );
+
+    if (error) {
+      return json({ error: "Impossibile aggiornare la password." }, 500);
+    }
+
+    return json({
+      login_id: account.login_id,
+      display_name: account.display_name,
+      password,
+    });
+  }
+
+  const displayName = body.display_name?.trim().slice(0, 50) || "Amministratore";
+  let loginId = body.login_id?.trim() || "";
+
+  if (loginId) {
+    if (!isValidLoginId(loginId)) {
+      return json({
+        error: "L’ID deve contenere da 3 a 32 caratteri: lettere, numeri, _ oppure -.",
+      }, 400);
+    }
+
+    const { data: collision, error: collisionError } = await adminClient
+      .from("admin_accounts")
+      .select("user_id")
+      .ilike("login_id", loginId)
+      .maybeSingle();
+
+    if (collisionError) {
+      return json({ error: "Impossibile verificare l’ID scelto." }, 500);
+    }
+
+    if (collision) {
+      return json({ error: "Questo ID Admin è già utilizzato." }, 409);
+    }
+  } else {
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const candidate = `ADM-${randomText(6, "ABCDEFGHJKLMNPQRSTUVWXYZ23456789")}`;
+      const { data: collision } = await adminClient
+        .from("admin_accounts")
+        .select("user_id")
+        .eq("login_id", candidate)
+        .maybeSingle();
+
+      if (!collision) {
+        loginId = candidate;
+        break;
+      }
+    }
+  }
+
+  if (!loginId) {
+    return json({ error: "Impossibile generare un ID univoco." }, 500);
+  }
+
+  const password = generatePassword();
+  const email = adminLoginEmail(loginId);
+  const { data: created, error: createError } = await adminClient.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+    app_metadata: { role: "admin" },
+  });
+
+  if (createError || !created.user) {
+    return json({ error: "Questo ID Admin non è disponibile." }, 409);
+  }
+
+  const { error: profileError } = await adminClient.from("profiles").insert({
+    id: created.user.id,
+    email,
+    role: "admin",
+    is_owner: false,
+  });
+
+  if (profileError) {
+    await adminClient.auth.admin.deleteUser(created.user.id);
+    return json({ error: "Impossibile assegnare il ruolo Admin." }, 500);
+  }
+
+  const { error: accountError } = await adminClient.from("admin_accounts").insert({
+    user_id: created.user.id,
+    login_id: loginId,
+    display_name: displayName,
+  });
+
+  if (accountError) {
+    await adminClient.from("profiles").delete().eq("id", created.user.id);
+    await adminClient.auth.admin.deleteUser(created.user.id);
+    return json({ error: "Impossibile salvare l’account Admin." }, 500);
+  }
+
+  return json({
+    login_id: loginId,
+    display_name: displayName,
+    password,
+  }, 201);
+});
