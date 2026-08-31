@@ -905,10 +905,6 @@ export default function Home() {
     (player) => getPresence(player.id)?.status === "Assente"
   );
 
-  const uncertainPlayers = players.filter(
-    (player) => getPresence(player.id)?.status === "In dubbio"
-  );
-
   // =========================================================
   // EVENTS
   // =========================================================
@@ -1245,11 +1241,6 @@ export default function Home() {
                     value={absentPlayers.length}
                   />
 
-                  <DashboardRow
-                    label="🟡 In dubbio"
-                    value={uncertainPlayers.length}
-                  />
-
                 </div>
 
               </div>
@@ -1580,10 +1571,6 @@ export default function Home() {
                     text={`🔴 ${absentPlayers.length} Assenti`}
                   />
 
-                  <Badge
-                    text={`🟡 ${uncertainPlayers.length} In dubbio`}
-                  />
-
                 </div>
 
               </div>
@@ -1679,11 +1666,6 @@ export default function Home() {
                                       text="🔴"
                                       active={presence?.status === "Assente"}
                                       onClick={() => savePresence(player, "Assente")}
-                                    />
-                                    <PresenceButton
-                                      text="🟡"
-                                      active={presence?.status === "In dubbio"}
-                                      onClick={() => savePresence(player, "In dubbio")}
                                     />
                                   </div>
                                 ) : (
