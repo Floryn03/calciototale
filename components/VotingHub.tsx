@@ -425,7 +425,7 @@ export default function VotingHub({
       setNewMatchName("");
       setNewMatchDate("");
       await loadData();
-      setSelectedMatchId(event.id);
+      window.location.reload();
     } catch (error) {
       alert(error instanceof Error ? error.message : "Errore creazione partita.");
     } finally {
