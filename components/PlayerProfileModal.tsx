@@ -1,144 +1,37 @@
 "use client";
 
-/* Reads only the existing public team data; no player profile data is invented. */
-import { useEffect, useMemo, useState } from "react";
+import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
+import PlayerCard, { CardPlayer, emptyPlayerCard, PlayerCardData } from "./PlayerCard";
 
-type Player = {
-  id: string;
-  name: string;
-  psn_id: string;
-  shirt_number: number;
-  position: string;
-  status: string;
-};
+type Player = CardPlayer & { status: string };
+type WeeklyHistory = { id: string; week_start: string; average_rating: number; votes_count: number; matches_count: number; performance_score: number };
+type ToggleKey = Exclude<keyof PlayerCardData, "photo_url" | "ovr_mode" | "manual_ovr" | "velocity" | "shooting" | "passing" | "dribbling" | "defending" | "physical">;
 
-type WeeklyHistory = {
-  id: string;
-  week_start: string;
-  average_rating: number;
-  votes_count: number;
-  matches_count: number;
-  performance_score: number;
-};
+const roles = ["POR", "DCD", "DCC", "DCS", "ES", "ED", "CCS", "CDC", "CCD", "ATT (PS)", "ATT (PD)"];
+const statFields: Array<{ key: keyof Pick<PlayerCardData, "velocity" | "shooting" | "passing" | "dribbling" | "defending" | "physical">; label: string; visible: ToggleKey }> = [
+  { key: "velocity", label: "VEL — Velocità", visible: "show_velocity" }, { key: "shooting", label: "TIR — Tiro", visible: "show_shooting" }, { key: "passing", label: "PAS — Passaggi", visible: "show_passing" }, { key: "dribbling", label: "DRI — Dribbling", visible: "show_dribbling" }, { key: "defending", label: "DIF — Difesa", visible: "show_defending" }, { key: "physical", label: "FIS — Fisico", visible: "show_physical" },
+];
 
-function formatWeek(value: string) {
-  return new Intl.DateTimeFormat("it-IT", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    timeZone: "UTC",
-  }).format(new Date(`${value}T00:00:00Z`));
+function formatWeek(value: string) { return new Intl.DateTimeFormat("it-IT", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${value}T00:00:00Z`)); }
+
+export default function PlayerProfileModal({ player, isAdmin, onClose, onPlayerUpdated }: { player: Player; isAdmin: boolean; onClose: () => void; onPlayerUpdated: (player: Player) => void }) {
+  const [loading, setLoading] = useState(true); const [presences, setPresences] = useState(0); const [presentCount, setPresentCount] = useState(0); const [ratings, setRatings] = useState<number[]>([]); const [top11Count, setTop11Count] = useState(0); const [mvpCount, setMvpCount] = useState(0); const [history, setHistory] = useState<WeeklyHistory[]>([]); const [showCard, setShowCard] = useState(false); const [showCardEditor, setShowCardEditor] = useState(false);
+  useEffect(() => { let active = true; async function loadProfile() { setLoading(true); const [presenceResult, ratingResult, top11Result, mvpResult, historyResult] = await Promise.all([supabase.from("presences").select("status").eq("player_id", player.id), supabase.from("match_ratings").select("rating").eq("player_id", player.id), supabase.from("weekly_top_11").select("id").eq("player_id", player.id), supabase.from("weekly_mvp").select("id").eq("player_id", player.id), supabase.from("weekly_player_ratings").select("id, week_start, average_rating, votes_count, matches_count, performance_score").eq("player_id", player.id).order("week_start", { ascending: false })]); if (!active) return; const presenceRows = presenceResult.data || []; setPresences(presenceRows.length); setPresentCount(presenceRows.filter((item) => item.status === "Presente").length); setRatings((ratingResult.data || []).map((item) => Number(item.rating))); setTop11Count((top11Result.data || []).length); setMvpCount((mvpResult.data || []).length); setHistory((historyResult.data || []) as WeeklyHistory[]); setLoading(false); } void loadProfile(); return () => { active = false; }; }, [player.id]);
+  const averageRating = useMemo(() => ratings.length ? ratings.reduce((total, rating) => total + rating, 0) / ratings.length : null, [ratings]);
+  return <div className="fixed inset-0 z-[110] overflow-y-auto bg-slate-950/85 px-4 py-6 backdrop-blur-sm"><div className="mx-auto w-full max-w-4xl rounded-3xl border border-emerald-400/30 bg-slate-900 p-5 shadow-2xl sm:p-8"><div className="flex items-start justify-between gap-4"><p className="font-black uppercase tracking-[0.2em] text-emerald-300">Calcio Totale 2026</p><div className="flex flex-wrap justify-end gap-2"><button type="button" onClick={() => setShowCard(true)} className="min-h-11 rounded-xl border border-amber-300/40 px-3 text-sm font-bold text-amber-200 hover:bg-amber-300/10">🎴 Player Card</button>{isAdmin && <button type="button" onClick={() => setShowCardEditor(true)} className="min-h-11 rounded-xl bg-amber-400 px-3 text-sm font-black text-slate-950 hover:bg-amber-300">✏️ Editor</button>}<button type="button" onClick={onClose} className="min-h-11 min-w-11 rounded-xl border border-slate-700 text-xl text-slate-300 hover:bg-slate-800" aria-label="Chiudi profilo giocatore">✕</button></div></div><div className="mt-5 grid gap-6 lg:grid-cols-[1fr_1.2fr]"><section className="overflow-hidden rounded-3xl border border-amber-300/35 bg-gradient-to-br from-amber-400/20 via-slate-900 to-emerald-500/15 p-5 sm:p-7"><div className="flex items-start justify-between gap-4"><div className="flex h-20 w-20 items-center justify-center rounded-2xl border border-emerald-300/30 bg-slate-950/80 text-2xl font-black text-emerald-300">{player.name.slice(0, 2).toUpperCase()}</div><div className="rounded-2xl border border-amber-300/40 bg-slate-950/80 px-4 py-2 text-center"><p className="text-[10px] font-bold uppercase text-amber-200">Media voto</p><p className="text-3xl font-black text-amber-300">{averageRating?.toFixed(2) || "—"}</p></div></div><p className="mt-6 text-sm font-black tracking-[0.2em] text-emerald-300">{player.position}</p><h2 className="mt-2 text-3xl font-black uppercase">{player.name}</h2><p className="mt-2 text-sm text-slate-400">PSN: {player.psn_id} · Maglia #{player.shirt_number}</p><div className="mt-6 grid grid-cols-2 gap-3 text-center"><CardMetric label="Presenze" value={`${presentCount}/${presences}`} /><CardMetric label="Media voto" value={averageRating?.toFixed(2) || "—"} /><CardMetric label="Top 11" value={String(top11Count)} /><CardMetric label="MVP" value={String(mvpCount)} /></div></section><section className="rounded-3xl border border-slate-700 bg-slate-950 p-5 sm:p-7"><h3 className="text-xl font-black">Storico rendimento</h3>{loading ? <p className="mt-3 text-sm text-slate-500">Caricamento dati reali…</p> : history.length === 0 ? <p className="mt-3 text-sm text-slate-500">Nessun rendimento settimanale ancora calcolato.</p> : <div className="mt-4 space-y-2">{history.map((week) => <div key={week.id} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 rounded-xl bg-slate-900 p-3 text-sm"><span className="font-bold">{formatWeek(week.week_start)}</span><span className="font-mono text-emerald-300">Media {Number(week.average_rating).toFixed(2)}</span><span className="font-black text-amber-300">{Number(week.performance_score).toFixed(2)}</span></div>)}</div>}</section></div>{showCard && <PlayerCardViewer player={player} onClose={() => setShowCard(false)} />}{showCardEditor && <PlayerCardEditor player={player} onPlayerUpdated={onPlayerUpdated} onClose={() => setShowCardEditor(false)} />}</div></div>;
 }
 
-export default function PlayerProfileModal({
-  player,
-  onClose,
-}: {
-  player: Player;
-  onClose: () => void;
-}) {
-  const [loading, setLoading] = useState(true);
-  const [presences, setPresences] = useState(0);
-  const [presentCount, setPresentCount] = useState(0);
-  const [ratings, setRatings] = useState<number[]>([]);
-  const [top11Count, setTop11Count] = useState(0);
-  const [mvpCount, setMvpCount] = useState(0);
-  const [history, setHistory] = useState<WeeklyHistory[]>([]);
+function PlayerCardViewer({ player, onClose }: { player: Player; onClose: () => void }) { const [card, setCard] = useState<PlayerCardData | null>(null); useEffect(() => { void supabase.from("player_cards").select("*").eq("player_id", player.id).maybeSingle().then(({ data }) => setCard(data ? { ...emptyPlayerCard(), ...data } : emptyPlayerCard())); }, [player.id]); return <div className="fixed inset-0 z-[120] flex items-center justify-center overflow-y-auto bg-slate-950/90 p-4"><div className="relative w-full max-w-md"><button type="button" onClick={onClose} className="absolute right-0 top-0 z-10 min-h-11 min-w-11 rounded-full bg-slate-950/90 text-xl">✕</button>{card ? <PlayerCard player={player} card={card} /> : <div className="aspect-[2/3] animate-pulse rounded-3xl bg-slate-800" />}</div></div>; }
 
-  useEffect(() => {
-    let active = true;
-
-    async function loadProfile() {
-      setLoading(true);
-      const [presenceResult, ratingResult, top11Result, mvpResult, historyResult] =
-        await Promise.all([
-          supabase.from("presences").select("status").eq("player_id", player.id),
-          supabase.from("match_ratings").select("rating").eq("player_id", player.id),
-          supabase.from("weekly_top_11").select("id").eq("player_id", player.id),
-          supabase.from("weekly_mvp").select("id").eq("player_id", player.id),
-          supabase
-            .from("weekly_player_ratings")
-            .select("id, week_start, average_rating, votes_count, matches_count, performance_score")
-            .eq("player_id", player.id)
-            .order("week_start", { ascending: false }),
-        ]);
-
-      if (!active) return;
-      const presenceRows = presenceResult.data || [];
-      setPresences(presenceRows.length);
-      setPresentCount(presenceRows.filter((item) => item.status === "Presente").length);
-      setRatings((ratingResult.data || []).map((item) => Number(item.rating)));
-      setTop11Count((top11Result.data || []).length);
-      setMvpCount((mvpResult.data || []).length);
-      setHistory((historyResult.data || []) as WeeklyHistory[]);
-      setLoading(false);
-    }
-
-    void loadProfile();
-    return () => {
-      active = false;
-    };
-  }, [player.id]);
-
-  const averageRating = useMemo(() => {
-    if (!ratings.length) return null;
-    return ratings.reduce((total, rating) => total + rating, 0) / ratings.length;
-  }, [ratings]);
-
-  const overall = averageRating === null ? "—" : String(Math.round(averageRating * 10));
-
-  return (
-    <div className="fixed inset-0 z-[110] overflow-y-auto bg-slate-950/85 px-4 py-6 backdrop-blur-sm">
-      <div className="mx-auto w-full max-w-4xl rounded-3xl border border-emerald-400/30 bg-slate-900 p-5 shadow-2xl sm:p-8">
-        <div className="flex items-start justify-between gap-4">
-          <p className="font-black uppercase tracking-[0.2em] text-emerald-300">Calcio Totale 2026</p>
-          <button type="button" onClick={onClose} className="min-h-11 min-w-11 rounded-xl border border-slate-700 text-xl text-slate-300 hover:bg-slate-800" aria-label="Chiudi profilo giocatore">✕</button>
-        </div>
-
-        <div className="mt-5 grid gap-6 lg:grid-cols-[1fr_1.2fr]">
-          <section className="overflow-hidden rounded-3xl border border-amber-300/35 bg-gradient-to-br from-amber-400/20 via-slate-900 to-emerald-500/15 p-5 sm:p-7">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex h-20 w-20 items-center justify-center rounded-2xl border border-emerald-300/30 bg-slate-950/80 text-2xl font-black text-emerald-300">
-                {player.name.slice(0, 2).toUpperCase()}
-              </div>
-              <div className="rounded-2xl border border-amber-300/40 bg-slate-950/80 px-4 py-2 text-center"><p className="text-[10px] font-bold uppercase text-amber-200">Overall</p><p className="text-3xl font-black text-amber-300">{overall}</p></div>
-            </div>
-            <p className="mt-6 text-sm font-black tracking-[0.2em] text-emerald-300">{player.position}</p>
-            <h2 className="mt-2 text-3xl font-black uppercase">{player.name}</h2>
-            <p className="mt-2 text-sm text-slate-400">PSN: {player.psn_id} · Maglia #{player.shirt_number}</p>
-            <div className="mt-6 grid grid-cols-2 gap-3 text-center">
-              <CardMetric label="Presenze" value={`${presentCount}/${presences}`} />
-              <CardMetric label="Media voto" value={averageRating?.toFixed(2) || "—"} />
-              <CardMetric label="Top 11" value={String(top11Count)} />
-              <CardMetric label="MVP" value={String(mvpCount)} />
-            </div>
-          </section>
-
-          <section className="rounded-3xl border border-slate-700 bg-slate-950 p-5 sm:p-7">
-            <h3 className="text-xl font-black">Attributi giocatore</h3>
-            <p className="mt-1 text-sm text-slate-500">Velocità, fisico, tiro, passaggio, dribbling e difesa saranno mostrati qui quando verranno registrati dati reali.</p>
-            <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
-              {[
-                ["VEL", "Velocità"], ["FIS", "Fisico"], ["TIR", "Tiro"],
-                ["PAS", "Passaggio"], ["DRI", "Dribbling"], ["DIF", "Difesa"],
-              ].map(([short, label]) => <TechnicalMetric key={short} short={short} label={label} />)}
-            </div>
-            <div className="mt-7 border-t border-slate-800 pt-5">
-              <h3 className="text-xl font-black">Storico rendimento</h3>
-              {loading ? <p className="mt-3 text-sm text-slate-500">Caricamento dati reali…</p> : history.length === 0 ? <p className="mt-3 text-sm text-slate-500">Nessun rendimento settimanale ancora calcolato.</p> : <div className="mt-4 space-y-2">{history.map((week) => <div key={week.id} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 rounded-xl bg-slate-900 p-3 text-sm"><span className="font-bold">{formatWeek(week.week_start)}</span><span className="font-mono text-emerald-300">Media {Number(week.average_rating).toFixed(2)}</span><span className="font-black text-amber-300">{Number(week.performance_score).toFixed(2)}</span></div>)}</div>}
-            </div>
-          </section>
-        </div>
-      </div>
-    </div>
-  );
+function PlayerCardEditor({ player, onClose, onPlayerUpdated }: { player: Player; onClose: () => void; onPlayerUpdated: (player: Player) => void }) {
+  const [card, setCard] = useState<PlayerCardData>(emptyPlayerCard()); const [draftPlayer, setDraftPlayer] = useState<Player>(player); const [loading, setLoading] = useState(true); const [saving, setSaving] = useState(false); const [message, setMessage] = useState("");
+  useEffect(() => { let active = true; void supabase.from("player_cards").select("*").eq("player_id", player.id).maybeSingle().then(({ data, error }) => { if (!active) return; if (error) setMessage(`Errore lettura card: ${error.message}`); setCard(data ? { ...emptyPlayerCard(), ...data } : emptyPlayerCard()); setLoading(false); }); return () => { active = false; }; }, [player.id]);
+  const setStat = (key: keyof Pick<PlayerCardData, "velocity" | "shooting" | "passing" | "dribbling" | "defending" | "physical">, value: string) => setCard((current) => ({ ...current, [key]: Math.max(1, Math.min(99, Number(value) || 1)) })); const toggle = (key: ToggleKey) => setCard((current) => ({ ...current, [key]: !current[key] }));
+  async function handlePhoto(event: ChangeEvent<HTMLInputElement>) { const file = event.target.files?.[0]; if (!file) return; if (!file.type.startsWith("image/")) { setMessage("Seleziona un file immagine."); return; } if (file.size > 2_000_000) { setMessage("La foto deve pesare al massimo 2 MB."); return; } const dataUrl = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = reject; reader.readAsDataURL(file); }); setCard((current) => ({ ...current, photo_url: dataUrl })); }
+  async function save() { setSaving(true); setMessage(""); const playerUpdate = { name: draftPlayer.name.trim(), psn_id: draftPlayer.psn_id.trim(), shirt_number: Number(draftPlayer.shirt_number), position: draftPlayer.position }; if (!playerUpdate.name || !playerUpdate.psn_id || !roles.includes(playerUpdate.position) || !Number.isInteger(playerUpdate.shirt_number) || playerUpdate.shirt_number < 1 || playerUpdate.shirt_number > 99) { setSaving(false); setMessage("Controlla nome, ID, numero maglia (1–99) e ruolo."); return; } const { data: updatedPlayer, error: playerError } = await supabase.from("players").update(playerUpdate).eq("id", player.id).select("id, name, psn_id, shirt_number, position, status").single(); if (playerError || !updatedPlayer) { setSaving(false); setMessage(`Errore dati giocatore: ${playerError?.message || "riprova"}`); return; } const { error: cardError } = await supabase.from("player_cards").upsert({ player_id: player.id, ...card }, { onConflict: "player_id" }); setSaving(false); if (cardError) { setMessage(`Dati giocatore salvati, ma errore Player Card: ${cardError.message}`); return; } onPlayerUpdated(updatedPlayer as Player); setDraftPlayer(updatedPlayer as Player); setMessage("Player Card salvata."); }
+  async function exportPng() { const canvas = document.createElement("canvas"); canvas.width = 2048; canvas.height = 3072; const context = canvas.getContext("2d"); if (!context) return; const loadImage = (src: string) => new Promise<HTMLImageElement>((resolve, reject) => { const image = new Image(); image.onload = () => resolve(image); image.onerror = reject; image.src = src; }); try { const template = await loadImage("/calcio-totale-player-card-template.png"); context.drawImage(template, 0, 0, canvas.width, canvas.height); if (card.show_photo) { const source = card.photo_url ? await loadImage(card.photo_url) : null; context.save(); context.beginPath(); context.arc(1024, 782, 492, 0, Math.PI * 2); context.clip(); if (source) context.drawImage(source, 532, 368, 984, 984); else { context.fillStyle = "#0f172a"; context.fill(); context.fillStyle = "#fbbf24"; context.font = "900 300px Arial"; context.textAlign = "center"; context.fillText(draftPlayer.name.slice(0, 2).toUpperCase(), 1024, 890); } context.restore(); context.strokeStyle = "rgba(245,158,11,.8)"; context.lineWidth = 20; context.beginPath(); context.arc(1024, 782, 492, 0, Math.PI * 2); context.stroke(); } const ovr = card.ovr_mode === "manual" && card.manual_ovr !== null ? card.manual_ovr : Math.round((card.velocity + card.shooting + card.passing + card.dribbling + card.defending + card.physical) / 6); context.fillStyle = "#172033"; context.textAlign = "left"; if (card.show_ovr) { context.font = "900 154px Arial"; context.fillText(String(ovr), 205, 1425); } if (card.show_role) { context.fillStyle = "#8a4e00"; context.font = "900 52px Arial"; context.fillText(draftPlayer.position, 540, 1425); } context.fillStyle = "#172033"; if (card.show_name) { context.font = "900 72px Arial"; context.fillText(draftPlayer.name.toUpperCase(), 205, 1605); } context.fillStyle = "#475569"; if (card.show_id) { context.font = "700 38px Arial"; context.fillText(draftPlayer.psn_id, 205, 1750); } if (card.show_number) { context.fillStyle = "#a16207"; context.textAlign = "right"; context.font = "900 60px Arial"; context.fillText(`#${draftPlayer.shirt_number}`, 1840, 1730); } const exportStats: Array<[boolean, string, number]> = [[card.show_velocity, "VEL", card.velocity], [card.show_shooting, "TIR", card.shooting], [card.show_passing, "PAS", card.passing], [card.show_dribbling, "DRI", card.dribbling], [card.show_defending, "DIF", card.defending], [card.show_physical, "FIS", card.physical]]; context.textAlign = "center"; exportStats.filter(([visible]) => visible).forEach(([, label, value], index) => { const x = 420 + (index % 3) * 600; const y = 2080 + Math.floor(index / 3) * 250; context.fillStyle = "#172033"; context.font = "900 72px Arial"; context.fillText(String(value), x, y); context.fillStyle = "#92400e"; context.font = "900 34px Arial"; context.fillText(label, x, y + 58); }); const anchor = document.createElement("a"); anchor.href = canvas.toDataURL("image/png"); anchor.download = `calcio-totale-${draftPlayer.psn_id || "player-card"}.png`; anchor.click(); setMessage("PNG esportato in alta qualità."); } catch { setMessage("Impossibile esportare la foto scelta. Usa una foto caricata dal dispositivo oppure un URL che permette il download."); } }
+  return <div className="fixed inset-0 z-[120] overflow-y-auto bg-slate-950/90 p-4 sm:p-6"><div className="mx-auto grid max-w-6xl gap-6 rounded-3xl border border-amber-300/30 bg-slate-900 p-5 shadow-2xl lg:grid-cols-[1.15fr_.85fr] lg:p-8"><section><div className="flex items-start justify-between gap-3"><div><p className="font-black uppercase tracking-[.18em] text-amber-200">Admin</p><h2 className="text-2xl font-black">🎴 Player Card Editor</h2></div><button type="button" onClick={onClose} className="min-h-11 min-w-11 rounded-xl border border-slate-700 text-xl">✕</button></div>{loading ? <p className="mt-6 text-slate-400">Caricamento card…</p> : <div className="mt-6 space-y-6"><fieldset className="grid gap-4 rounded-2xl border border-slate-700 p-4 sm:grid-cols-2"><legend className="px-2 font-bold text-emerald-300">Dati giocatore</legend><EditorInput label="Nome" value={draftPlayer.name} onChange={(value) => setDraftPlayer({ ...draftPlayer, name: value })} /><EditorInput label="ID" value={draftPlayer.psn_id} onChange={(value) => setDraftPlayer({ ...draftPlayer, psn_id: value })} /><EditorInput label="Numero maglia" type="number" value={String(draftPlayer.shirt_number)} onChange={(value) => setDraftPlayer({ ...draftPlayer, shirt_number: Number(value) })} /><label className="text-sm font-bold">Ruolo<select value={draftPlayer.position} onChange={(event) => setDraftPlayer({ ...draftPlayer, position: event.target.value })} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 p-3">{roles.map((role) => <option key={role}>{role}</option>)}</select></label><label className="text-sm font-bold sm:col-span-2">Foto (massimo 2 MB)<input type="file" accept="image/*" onChange={handlePhoto} className="mt-2 block w-full text-sm" /></label>{card.photo_url && <button type="button" onClick={() => setCard({ ...card, photo_url: null })} className="text-left text-sm font-bold text-red-300">Rimuovi foto</button>}</fieldset><fieldset className="rounded-2xl border border-slate-700 p-4"><legend className="px-2 font-bold text-emerald-300">OVR</legend><div className="grid gap-3 sm:grid-cols-2"><label className="rounded-xl border border-slate-700 p-3 text-sm font-bold"><input type="radio" checked={card.ovr_mode === "automatic"} onChange={() => setCard({ ...card, ovr_mode: "automatic" })} /> Automatico (media delle 6 statistiche)</label><label className="rounded-xl border border-slate-700 p-3 text-sm font-bold"><input type="radio" checked={card.ovr_mode === "manual"} onChange={() => setCard({ ...card, ovr_mode: "manual" })} /> Manuale</label></div>{card.ovr_mode === "manual" && <EditorInput label="OVR manuale" type="number" value={String(card.manual_ovr ?? 50)} onChange={(value) => setCard({ ...card, manual_ovr: Math.max(1, Math.min(99, Number(value) || 1)) })} />}</fieldset><fieldset className="rounded-2xl border border-slate-700 p-4"><legend className="px-2 font-bold text-emerald-300">Statistiche</legend><div className="grid gap-3 sm:grid-cols-2">{statFields.map((stat) => <label key={stat.key} className="flex items-center gap-3 rounded-xl bg-slate-950 p-3 text-sm font-bold"><input type="number" min="1" max="99" value={card[stat.key] as number} onChange={(event) => setStat(stat.key, event.target.value)} className="w-20 rounded-lg border border-slate-700 bg-slate-900 p-2 text-center" />{stat.label}<input aria-label={`Mostra ${stat.label}`} type="checkbox" checked={card[stat.visible]} onChange={() => toggle(stat.visible)} className="ml-auto h-5 w-5 accent-emerald-400" /></label>)}</div></fieldset><fieldset className="rounded-2xl border border-slate-700 p-4"><legend className="px-2 font-bold text-emerald-300">Mostra / nascondi elementi</legend><div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{([['show_photo','Foto'],['show_name','Nome'],['show_id','ID'],['show_number','Numero'],['show_role','Ruolo'],['show_ovr','OVR']] as Array<[ToggleKey, string]>).map(([key,label]) => <label key={key} className="flex items-center gap-2 rounded-lg bg-slate-950 p-2 text-sm"><input type="checkbox" checked={card[key]} onChange={() => toggle(key)} className="h-4 w-4 accent-emerald-400" />{label}</label>)}</div></fieldset>{message && <p className="rounded-xl border border-emerald-400/25 bg-emerald-400/10 p-3 text-sm text-emerald-200">{message}</p>}<div className="flex flex-wrap gap-3"><button type="button" onClick={() => void save()} disabled={saving} className="min-h-12 rounded-xl bg-emerald-500 px-5 font-black text-slate-950 disabled:opacity-60">{saving ? "Salvataggio…" : "💾 Salva Player Card"}</button><button type="button" onClick={() => void exportPng()} className="min-h-12 rounded-xl border border-amber-300/40 px-5 font-bold text-amber-200">📥 Esporta Player Card</button></div></div>}</section><aside className="flex flex-col items-center"><p className="mb-4 font-bold text-slate-400">ANTEPRIMA LIVE</p><div className="w-full max-w-md"><PlayerCard player={draftPlayer} card={card} /></div></aside></div></div>;
 }
-
-function CardMetric({ label, value }: { label: string; value: string }) {
-  return <div className="rounded-xl bg-slate-950/80 p-3"><p className="text-[10px] font-bold uppercase text-slate-500">{label}</p><p className="mt-1 text-xl font-black">{value}</p></div>;
-}
-
-function TechnicalMetric({ short, label }: { short: string; label: string }) {
-  return <div className="rounded-xl border border-slate-800 bg-slate-900 p-3"><p className="text-xs font-black text-emerald-300">{short} <span className="text-slate-400">—</span></p><p className="mt-1 text-xs text-slate-500">{label}</p></div>;
-}
+function EditorInput({ label, value, onChange, type = "text" }: { label: string; value: string; onChange: (value: string) => void; type?: string }) { return <label className="text-sm font-bold">{label}<input type={type} value={value} onChange={(event) => onChange(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 p-3" /></label>; }
+function CardMetric({ label, value }: { label: string; value: string }) { return <div className="rounded-xl bg-slate-950/80 p-3"><p className="text-[10px] font-bold uppercase text-slate-500">{label}</p><p className="mt-1 text-xl font-black">{value}</p></div>; }

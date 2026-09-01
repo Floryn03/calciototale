@@ -2515,6 +2515,11 @@ export default function Home() {
         {profilePlayer && (
           <PlayerProfileModal
             player={profilePlayer}
+            isAdmin={isAdmin}
+            onPlayerUpdated={(updatedPlayer) => {
+              setPlayers((current) => current.map((item) => item.id === updatedPlayer.id ? { ...item, ...updatedPlayer } : item));
+              setProfilePlayer((current) => current && current.id === updatedPlayer.id ? { ...current, ...updatedPlayer } : current);
+            }}
             onClose={() => setProfilePlayer(null)}
           />
         )}
