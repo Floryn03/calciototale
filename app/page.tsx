@@ -1047,6 +1047,13 @@ export default function Home() {
   const presencePlayers = isPlayer
     ? players.filter((player) => player.id === sessionPlayerId)
     : players;
+  const presenceDepartments = [
+    { title: "🧤 CT | PORTIERI", positions: ["POR"] },
+    { title: "🛡️ CT | DIFESA", positions: ["DCD", "DCC", "DCS"] },
+    { title: "⚡ CT | ESTERNI", positions: ["ES", "ED"] },
+    { title: "🎯 CT | CENTROCAMPO", positions: ["CCS", "CDC", "CCD"] },
+    { title: "🔥 CT | ATTACCO", positions: ["ATT (PS)", "ATT (PD)"] },
+  ];
 
   // =========================================================
   // RENDER
@@ -1613,112 +1620,74 @@ export default function Home() {
             {loadingPresences ? (
               <Loading />
             ) : (
-              <div className="overflow-hidden rounded-3xl border border-slate-800">
+              <div className="space-y-5">
+                {presenceDepartments.map((department) => {
+                  const departmentPlayers = presencePlayers.filter(
+                    (player) =>
+                      player.status === "Attivo" &&
+                      department.positions.includes(player.position)
+                  );
+                  if (departmentPlayers.length === 0) return null;
 
-                <div className="overflow-x-auto">
-
-                  <table className="w-full">
-
-                    <thead className="bg-slate-900">
-
-                      <tr className="text-left text-sm text-slate-400">
-
-                        <th className="px-5 py-4">
-                          Giocatore
-                        </th>
-
-                        <th className="px-5 py-4">
-                          Posizione
-                        </th>
-
-                        <th className="px-5 py-4">
-                          Stato
-                        </th>
-
-                        <th className="px-5 py-4">
-                          Azione
-                        </th>
-
-                      </tr>
-
-                    </thead>
-
-                    <tbody>
-
-                      {presencePlayers
-                        .filter(
-                          (player) =>
-                            player.status === "Attivo"
-                        )
-                        .map((player) => {
-
-                          const presence =
-                            getPresence(player.id);
-
-                          return (
-                            <tr
-                              key={player.id}
-                              className="border-t border-slate-800"
-                            >
-
-                              <td className="px-5 py-4">
-
-                                <div className="font-bold">
-                                  {player.name}
-                                </div>
-
-                                <div className="text-xs text-slate-500">
-                                  {player.psn_id}
-                                </div>
-
-                              </td>
-
-                              <td className="px-5 py-4">
-                                {player.position}
-                              </td>
-
-                              <td className="px-5 py-4">
-                                <PresenceBadge
-                                  status={
-                                    presence?.status ||
-                                    "Da confermare"
-                                  }
-                                />
-                              </td>
-
-                              <td className="px-5 py-4">
-
-                                {(isAdmin || player.id === sessionPlayerId) ? (
-                                  <div className="flex flex-wrap gap-2">
-                                    <PresenceButton
-                                      text="🟢"
-                                      active={presence?.status === "Presente"}
-                                      onClick={() => savePresence(player, "Presente")}
-                                    />
-                                    <PresenceButton
-                                      text="🔴"
-                                      active={presence?.status === "Assente"}
-                                      onClick={() => savePresence(player, "Assente")}
-                                    />
-                                  </div>
-                                ) : (
-                                  <span className="text-sm text-slate-500">
-                                    Sola lettura
-                                  </span>
-                                )}
-
-                              </td>
-
+                  return (
+                    <section
+                      key={department.title}
+                      className="overflow-hidden rounded-3xl border border-slate-800"
+                    >
+                      <h2 className="bg-slate-900 px-5 py-4 text-lg font-bold">
+                        {department.title}
+                      </h2>
+                      <div className="overflow-x-auto">
+                        <table className="w-full">
+                          <thead className="bg-slate-900">
+                            <tr className="text-left text-sm text-slate-400">
+                              <th className="px-5 py-4">Giocatore</th>
+                              <th className="px-5 py-4">Posizione</th>
+                              <th className="px-5 py-4">Stato</th>
+                              <th className="px-5 py-4">Azione</th>
                             </tr>
-                          );
-                        })}
+                          </thead>
+                          <tbody>
+                            {departmentPlayers.map((player) => {
+                              const presence = getPresence(player.id);
 
-                    </tbody>
-
-                  </table>
-
-                </div>
-
+                              return (
+                                <tr key={player.id} className="border-t border-slate-800">
+                                  <td className="px-5 py-4">
+                                    <div className="font-bold">{player.name}</div>
+                                    <div className="text-xs text-slate-500">{player.psn_id}</div>
+                                  </td>
+                                  <td className="px-5 py-4">{player.position}</td>
+                                  <td className="px-5 py-4">
+                                    <PresenceBadge status={presence?.status || "Da confermare"} />
+                                  </td>
+                                  <td className="px-5 py-4">
+                                    {(isAdmin || player.id === sessionPlayerId) ? (
+                                      <div className="flex flex-wrap gap-2">
+                                        <PresenceButton
+                                          text="🟢"
+                                          active={presence?.status === "Presente"}
+                                          onClick={() => savePresence(player, "Presente")}
+                                        />
+                                        <PresenceButton
+                                          text="🔴"
+                                          active={presence?.status === "Assente"}
+                                          onClick={() => savePresence(player, "Assente")}
+                                        />
+                                      </div>
+                                    ) : (
+                                      <span className="text-sm text-slate-500">Sola lettura</span>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </section>
+                  );
+                })}
               </div>
             )}
 
