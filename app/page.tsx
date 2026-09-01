@@ -159,13 +159,10 @@ export default function Home() {
   const [eventName, setEventName] = useState("");
   const [eventDate, setEventDate] = useState("");
   const [eventTime, setEventTime] = useState("");
-  const [editingEventId, setEditingEventId] = useState<string | null>(null);
-  const [editingEventName, setEditingEventName] = useState("");
-  const [editingEventDate, setEditingEventDate] = useState("");
-  const [editingEventTime, setEditingEventTime] = useState("");
 
   const [events, setEvents] = useState<EventItem[]>([]);
   const [selectedEventId, setSelectedEventId] = useState("");
+  const [eventPresenceSummary, setEventPresenceSummary] = useState<{ present: number; absent: number } | null>(null);
 
   const [competitions, setCompetitions] = useState<
     {
@@ -628,6 +625,18 @@ export default function Home() {
     return () => window.clearTimeout(presenceLoad);
   }, [loadPresences]);
 
+  useEffect(() => {
+    if (!sessionPlayerId || isAdmin || !selectedEventId) {
+      setEventPresenceSummary(null);
+      return;
+    }
+    void supabase.rpc("get_event_presence_summary", { target_event_id: selectedEventId }).then(({ data, error }) => {
+      if (error) return;
+      const summary = Array.isArray(data) ? data[0] : data;
+      setEventPresenceSummary({ present: Number(summary?.present_count || 0), absent: Number(summary?.absent_count || 0) });
+    });
+  }, [sessionPlayerId, isAdmin, selectedEventId, presences]);
+
   // =========================================================
   // PLAYER FORM
   // =========================================================
@@ -997,43 +1006,6 @@ export default function Home() {
     if (selectedEventId === id) {
       setSelectedEventId("");
     }
-  }
-
-  function startEventEdit(event: EventItem) {
-    setEditingEventId(event.id);
-    setEditingEventName(event.name);
-    setEditingEventDate(event.event_date);
-    setEditingEventTime(event.event_time || "");
-  }
-
-  function cancelEventEdit() {
-    setEditingEventId(null);
-    setEditingEventName("");
-    setEditingEventDate("");
-    setEditingEventTime("");
-  }
-
-  async function saveEventEdit(id: string) {
-    if (!editingEventName.trim() || !editingEventDate) {
-      alert("Inserisci nome e data dell'evento.");
-      return;
-    }
-
-    const { data, error } = await supabase
-      .from("events")
-      .update({ name: editingEventName.trim(), event_date: editingEventDate, event_time: editingEventTime || null })
-      .eq("id", id)
-      .select("id, name, event_date, event_time")
-      .single();
-
-    if (error || !data) {
-      alert(`Errore modifica evento:\n${error?.message || "Evento non aggiornato."}`);
-      return;
-    }
-
-    setEvents((current) => current.map((event) => (event.id === id ? data as EventItem : event)));
-    if (selectedEventId === id) setPresenceDate(data.event_date);
-    cancelEventEdit();
   }
 
   // =========================================================
@@ -1645,11 +1617,11 @@ export default function Home() {
                 <div className="mt-3 flex flex-wrap gap-3">
 
                   <Badge
-                    text={`🟢 ${presentPlayers.length} Presenti`}
+                    text={`🟢 ${isPlayer && eventPresenceSummary ? eventPresenceSummary.present : presentPlayers.length} Presenti`}
                   />
 
                   <Badge
-                    text={`🔴 ${absentPlayers.length} Assenti`}
+                    text={`🔴 ${isPlayer && eventPresenceSummary ? eventPresenceSummary.absent : absentPlayers.length} Assenti`}
                   />
 
                 </div>
@@ -1811,32 +1783,31 @@ export default function Home() {
                       className="rounded-2xl border border-slate-800 bg-slate-900 p-6"
                     >
 
-                      {editingEventId === event.id ? (
-                        <div>
-                          <h3 className="text-xl font-bold">✏️ Modifica evento</h3>
-                          <div className="mt-5 space-y-3">
-                            <Input label="Nome evento" value={editingEventName} onChange={setEditingEventName} />
-                            <Input label="Data" value={editingEventDate} onChange={setEditingEventDate} type="date" />
-                            <Input label="Ora" value={editingEventTime} onChange={setEditingEventTime} type="time" />
-                          </div>
-                          <div className="mt-5 grid grid-cols-2 gap-3">
-                            <button onClick={() => saveEventEdit(event.id)} className="rounded-xl bg-emerald-500 px-4 py-3 text-sm font-bold text-slate-950">💾 Salva</button>
-                            <button onClick={cancelEventEdit} className="rounded-xl border border-slate-700 px-4 py-3 text-sm font-bold">Annulla</button>
-                          </div>
-                        </div>
-                      ) : (
-                        <>
-                          <div className="text-4xl">📅</div>
-                          <h3 className="mt-4 text-xl font-bold">{event.name}</h3>
-                          <p className="mt-3 text-slate-400">📆 {event.event_date}</p>
-                          {event.event_time && <p className="mt-1 text-slate-400">🕘 {event.event_time}</p>}
-                          {isAdmin && (
-                            <div className="mt-5 grid grid-cols-2 gap-3">
-                              <button onClick={() => startEventEdit(event)} className="rounded-xl border border-emerald-400/30 px-4 py-3 text-sm font-bold text-emerald-300">✏️ Modifica</button>
-                              <button onClick={() => deleteEvent(event.id)} className="rounded-xl border border-red-500/20 px-4 py-3 text-sm text-red-400">🗑️ Elimina</button>
-                            </div>
-                          )}
-                        </>
+                      <div className="text-4xl">
+                        📅
+                      </div>
+
+                      <h3 className="mt-4 text-xl font-bold">
+                        {event.name}
+                      </h3>
+
+                      <p className="mt-3 text-slate-400">
+                        📆 {event.event_date}
+                      </p>
+
+                      {event.event_time && (
+                        <p className="mt-1 text-slate-400">
+                          🕘 {event.event_time}
+                        </p>
+                      )}
+
+                      {isAdmin && (
+                        <button
+                          onClick={() => deleteEvent(event.id)}
+                          className="mt-5 w-full rounded-xl border border-red-500/20 px-4 py-3 text-sm text-red-400"
+                        >
+                          🗑️ Elimina
+                        </button>
                       )}
 
                     </div>
