@@ -159,6 +159,7 @@ export default function Home() {
   const [eventName, setEventName] = useState("");
   const [eventDate, setEventDate] = useState("");
   const [eventTime, setEventTime] = useState("");
+  const [editingEventId, setEditingEventId] = useState<string | null>(null);
 
   const [events, setEvents] = useState<EventItem[]>([]);
   const [selectedEventId, setSelectedEventId] = useState("");
@@ -977,13 +978,58 @@ export default function Home() {
     setEventTime("");
   }
 
-  async function editEvent(event: EventItem) {
-    const name = window.prompt("Nome evento", event.name); if (name === null || !name.trim()) return;
-    const date = window.prompt("Data (AAAA-MM-GG)", event.event_date); if (date === null || !date) return;
-    const time = window.prompt("Ora (HH:MM)", event.event_time?.slice(0,5) || ""); if (time === null) return;
-    const { data, error } = await supabase.from("events").update({ name: name.trim(), event_date: date, event_time: time || null }).eq("id", event.id).select("id, name, event_date, event_time").single();
-    if (error || !data) { alert("Errore modifica evento."); return; }
-    setEvents(current => current.map(item => item.id === event.id ? data as EventItem : item));
+  function openEditEvent(event: EventItem) {
+    setEditingEventId(event.id);
+    setEventName(event.name);
+    setEventDate(event.event_date);
+    setEventTime(event.event_time ? event.event_time.slice(0, 5) : "");
+  }
+
+  function cancelEditEvent() {
+    setEditingEventId(null);
+    setEventName("");
+    setEventDate("");
+    setEventTime("");
+  }
+
+  async function saveEvent() {
+    if (!editingEventId) return;
+
+    if (!eventName.trim()) {
+      alert("Inserisci il nome dell'evento.");
+      return;
+    }
+
+    if (!eventDate) {
+      alert("Seleziona la data.");
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("events")
+      .update({
+        name: eventName.trim(),
+        event_date: eventDate,
+        event_time: eventTime || null,
+      })
+      .eq("id", editingEventId)
+      .select("id, name, event_date, event_time")
+      .single();
+
+    if (error || !data) {
+      alert(`Errore modifica evento:\n${error?.message || "Evento non aggiornato."}`);
+      return;
+    }
+
+    setEvents((current) =>
+      current.map((event) => (event.id === data.id ? (data as EventItem) : event))
+    );
+
+    if (selectedEventId === data.id) {
+      setPresenceDate(data.event_date);
+    }
+
+    cancelEditEvent();
   }
 
   async function deleteEvent(id: string) {
@@ -1720,7 +1766,7 @@ export default function Home() {
             <div className="mb-8 rounded-3xl border border-slate-800 bg-slate-900 p-7">
 
               <h3 className="text-xl font-bold">
-                ➕ Nuovo evento
+                {editingEventId ? "✏️ Modifica evento" : "➕ Nuovo evento"}
               </h3>
 
               <div className="mt-5 grid gap-4 md:grid-cols-3">
@@ -1748,12 +1794,24 @@ export default function Home() {
 
               </div>
 
-              <button
-                onClick={addEvent}
-                className="mt-5 rounded-xl bg-emerald-500 px-6 py-3 font-bold text-slate-950"
-              >
-                ➕ Crea evento
-              </button>
+              <div className="mt-5 flex flex-wrap gap-3">
+                <button
+                  onClick={editingEventId ? saveEvent : addEvent}
+                  className="rounded-xl bg-emerald-500 px-6 py-3 font-bold text-slate-950"
+                >
+                  {editingEventId ? "💾 Salva modifiche" : "➕ Crea evento"}
+                </button>
+
+                {editingEventId && (
+                  <button
+                    type="button"
+                    onClick={cancelEditEvent}
+                    className="rounded-xl border border-slate-700 px-6 py-3 font-semibold text-slate-300 hover:bg-slate-800"
+                  >
+                    Annulla
+                  </button>
+                )}
+              </div>
 
             </div>
             )}
@@ -1798,18 +1856,22 @@ export default function Home() {
                       )}
 
                       {isAdmin && (
-                        <button
-                          onClick={() => editEvent(event)}
-                          className="mt-5 w-full rounded-xl border border-emerald-500/30 px-4 py-3 text-sm text-emerald-300"
-                        >
-                          ✏️ Modifica
-                        </button>
-                        <button
-                          onClick={() => deleteEvent(event.id)}
-                          className="mt-3 w-full rounded-xl border border-red-500/20 px-4 py-3 text-sm text-red-400"
-                        >
-                          🗑️ Elimina
-                        </button>
+                        <div className="mt-5 flex flex-wrap gap-3">
+                          <button
+                            type="button"
+                            onClick={() => openEditEvent(event)}
+                            className="flex-1 rounded-xl border border-emerald-500/30 px-4 py-3 text-sm font-semibold text-emerald-300 hover:bg-emerald-500/10"
+                          >
+                            ✏️ Modifica
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deleteEvent(event.id)}
+                            className="flex-1 rounded-xl border border-red-500/20 px-4 py-3 text-sm font-semibold text-red-400 hover:bg-red-500/10"
+                          >
+                            🗑️ Elimina
+                          </button>
+                        </div>
                       )}
 
                     </div>
