@@ -48,7 +48,7 @@ Deno.serve(async (request) => {
 
   const { data, error } = await client
     .from("presences")
-    .update({ status: "Da confermare" })
+    .update({ status: "Da confermare", event_role: null })
     .eq("event_id", event.id)
     .neq("status", "Da confermare")
     .select("id");
