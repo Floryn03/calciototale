@@ -16,6 +16,8 @@ type Player = {
   created_at: string;
 };
 
+type PresenceRole = "POR" | "DCD" | "DCC" | "DCS" | "ES" | "ED" | "CCS" | "CDC" | "CCD" | "ATT";
+
 type Presence = {
   id: string;
   player_id: string;
@@ -23,6 +25,7 @@ type Presence = {
   presence_date: string;
   status: string;
   note: string | null;
+  event_role: PresenceRole | null;
 };
 
 type EventItem = {
@@ -72,6 +75,8 @@ const positions = [
   { value: "ATT (PS)", label: "⚽ ATT (PS) — Attaccante punta sinistra" },
   { value: "ATT (PD)", label: "⚽ ATT (PD) — Attaccante punta destra" },
 ];
+
+const presenceRoles: PresenceRole[] = ["POR", "DCD", "DCC", "DCS", "ES", "ED", "CCS", "CDC", "CCD", "ATT"];
 
 const menu = [
   { id: "dashboard", label: "Dashboard", icon: "🏠" },
@@ -163,6 +168,9 @@ export default function Home() {
 
   const [events, setEvents] = useState<EventItem[]>([]);
   const [selectedEventId, setSelectedEventId] = useState("");
+  const [presenceRolePickerPlayerId, setPresenceRolePickerPlayerId] = useState<string | null>(null);
+  const [presenceRoleDrafts, setPresenceRoleDrafts] = useState<Record<string, PresenceRole | "">>({});
+  const [presenceRoleFilter, setPresenceRoleFilter] = useState<PresenceRole | "">("");
 
   const [competitions, setCompetitions] = useState<
     {
@@ -834,12 +842,27 @@ export default function Home() {
     );
   }
 
+  function openPresenceRolePicker(player: Player) {
+    const existing = getPresence(player.id);
+    setPresenceRoleDrafts((current) => ({
+      ...current,
+      [player.id]: existing?.event_role || "",
+    }));
+    setPresenceRolePickerPlayerId(player.id);
+  }
+
   async function savePresence(
     player: Player,
-    newStatus: string
+    newStatus: string,
+    eventRole: PresenceRole | null = null
   ) {
     if (!selectedEventId) {
       alert("Seleziona prima un evento.");
+      return;
+    }
+
+    if (newStatus === "Presente" && !eventRole) {
+      alert("Scegli il ruolo per questa serata.");
       return;
     }
 
@@ -859,6 +882,7 @@ export default function Home() {
       presence_date: selectedEvent.event_date,
       status: newStatus,
       note: existing?.note || null,
+      event_role: newStatus === "Presente" ? eventRole : null,
     };
 
     if (existing) {
@@ -877,7 +901,7 @@ export default function Home() {
       if (data) {
         setPresences((current) =>
           current.map((item) =>
-            item.id === data.id ? data : item
+            item.id === data.id ? (data as Presence) : item
           )
         );
       }
@@ -894,9 +918,11 @@ export default function Home() {
       }
 
       if (data) {
-        setPresences((current) => [...current, data]);
+        setPresences((current) => [...current, data as Presence]);
       }
     }
+
+    setPresenceRolePickerPlayerId(null);
   }
 
   async function resetSelectedEventPresences() {
@@ -1668,6 +1694,24 @@ export default function Home() {
 
                 </div>
 
+                {isAdmin && (
+                  <div className="mt-4">
+                    <label className="mb-2 block text-sm font-semibold">
+                      Filtra presenti per ruolo
+                    </label>
+                    <select
+                      value={presenceRoleFilter}
+                      onChange={(e) => setPresenceRoleFilter(e.target.value as PresenceRole | "")}
+                      className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm outline-none focus:border-emerald-500"
+                    >
+                      <option value="">Tutti i ruoli</option>
+                      {presenceRoles.map((role) => (
+                        <option key={role} value={role}>{role}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
               </div>
 
             </div>
@@ -1677,11 +1721,17 @@ export default function Home() {
             ) : (
               <div className="space-y-5">
                 {presenceDepartments.map((department) => {
-                  const departmentPlayers = presencePlayers.filter(
-                    (player) =>
+                  const departmentPlayers = presencePlayers.filter((player) => {
+                    const presence = getPresence(player.id);
+                    return (
                       player.status === "Attivo" &&
-                      department.positions.includes(player.position)
-                  );
+                      department.positions.includes(player.position) &&
+                      (!isAdmin ||
+                        !presenceRoleFilter ||
+                        (presence?.status === "Presente" &&
+                          presence.event_role === presenceRoleFilter))
+                    );
+                  });
                   if (departmentPlayers.length === 0) return null;
 
                   return (
@@ -1699,6 +1749,7 @@ export default function Home() {
                               <th className="px-5 py-4">Giocatore</th>
                               <th className="px-5 py-4">Posizione</th>
                               <th className="px-5 py-4">Stato</th>
+                              <th className="px-5 py-4">Ruolo serata</th>
                               <th className="px-5 py-4">Azione</th>
                             </tr>
                           </thead>
@@ -1716,13 +1767,18 @@ export default function Home() {
                                   <td className="px-5 py-4">
                                     <PresenceBadge status={presence?.status || "Da confermare"} />
                                   </td>
+                                  <td className="px-5 py-4 text-sm font-semibold text-emerald-300">
+                                    {presence?.status === "Presente" && presence.event_role
+                                      ? presence.event_role
+                                      : "—"}
+                                  </td>
                                   <td className="px-5 py-4">
                                     {(isAdmin || player.id === sessionPlayerId) ? (
                                       <div className="flex flex-wrap gap-2">
                                         <PresenceButton
                                           text="🟢"
                                           active={presence?.status === "Presente"}
-                                          onClick={() => savePresence(player, "Presente")}
+                                          onClick={() => openPresenceRolePicker(player)}
                                         />
                                         <PresenceButton
                                           text="🔴"
@@ -1730,6 +1786,44 @@ export default function Home() {
                                           onClick={() => savePresence(player, "Assente")}
                                         />
                                       </div>
+
+                                      {presenceRolePickerPlayerId === player.id && (
+                                        <div className="mt-3 w-full min-w-56">
+                                          <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-slate-400">
+                                            Ruolo per questa serata
+                                          </label>
+                                          <div className="flex flex-wrap gap-2">
+                                            <select
+                                              value={presenceRoleDrafts[player.id] || ""}
+                                              onChange={(e) =>
+                                                setPresenceRoleDrafts((current) => ({
+                                                  ...current,
+                                                  [player.id]: e.target.value as PresenceRole | "",
+                                                }))
+                                              }
+                                              className="min-h-11 flex-1 rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-emerald-500"
+                                            >
+                                              <option value="">Scegli ruolo</option>
+                                              {presenceRoles.map((role) => (
+                                                <option key={role} value={role}>{role}</option>
+                                              ))}
+                                            </select>
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                savePresence(
+                                                  player,
+                                                  "Presente",
+                                                  presenceRoleDrafts[player.id] || null
+                                                )
+                                              }
+                                              className="min-h-11 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-bold text-slate-950 hover:bg-emerald-400"
+                                            >
+                                              Conferma
+                                            </button>
+                                          </div>
+                                        </div>
+                                      )}
                                     ) : (
                                       <span className="text-sm text-slate-500">Sola lettura</span>
                                     )}
