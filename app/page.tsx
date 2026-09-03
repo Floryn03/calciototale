@@ -1497,17 +1497,17 @@ export default function Home() {
                 <div className="grid gap-5 md:grid-cols-2">
 
                   <Input
-                    label="ID EA"
+                    label="ID PlayStation"
                     value={name}
                     onChange={setName}
-                    placeholder="Es. FLORIN"
+                    placeholder="Es. ID PlayStation"
                   />
 
                   <Input
-                    label="ID PlayStation"
+                    label="ID EA"
                     value={psnId}
                     onChange={setPsnId}
-                    placeholder="Es. FLORYN03"
+                    placeholder="Es. ID EA"
                   />
 
                   <Input
