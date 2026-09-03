@@ -76,7 +76,8 @@ const positions = [
   { value: "ATT (PD)", label: "⚽ ATT (PD) — Attaccante punta destra" },
 ];
 
-// Ruoli validi per la singola presenza, indipendenti dal ruolo fisso del giocatore.\nconst presenceRoles: PresenceRole[] = ["POR", "DCD", "DCC", "DCS", "ES", "ED", "CCS", "CDC", "CCD", "ATT"];
+// Ruoli validi per la singola presenza, indipendenti dal ruolo fisso del giocatore.
+const presenceRoles: PresenceRole[] = ["POR", "DCD", "DCC", "DCS", "ES", "ED", "CCS", "CDC", "CCD", "ATT"];
 
 const menu = [
   { id: "dashboard", label: "Dashboard", icon: "🏠" },
