@@ -2624,19 +2624,16 @@ export default function Home() {
             <div className="w-full max-w-md rounded-3xl border border-slate-700 bg-slate-900 p-7 shadow-2xl">
               <div className="relative text-center">
                 <div className="pr-11">
-                  <p className="font-bold uppercase tracking-[0.25em] text-emerald-400">
-                    CALCIO TOTALE
-                  </p>
-                  <h2 className="mt-3 flex items-center justify-center gap-3 text-3xl font-black">
-                    <Image
-                      src="/calcio-totale-2026-logo.png"
-                      alt="Logo Calcio Totale"
-                      width={52}
-                      height={52}
-                      unoptimized
-                      className="h-12 w-12 object-contain"
-                    />
-                    <span>Accesso giocatore</span>
+                  <Image
+                    src="/calcio-totale-2026-logo.png"
+                    alt="Logo Calcio Totale"
+                    width={64}
+                    height={64}
+                    unoptimized
+                    className="mx-auto h-14 w-14 object-contain mix-blend-screen"
+                  />
+                  <h2 className="mt-3 text-2xl font-black sm:text-3xl">
+                    Accesso giocatore
                   </h2>
                   <p className="mt-3 text-sm text-slate-400">
                     Usa l’ID e la password ricevuti dall’amministratore.
