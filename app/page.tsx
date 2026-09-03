@@ -1160,7 +1160,7 @@ export default function Home() {
               height={56}
               unoptimized
               priority
-              className="h-12 w-12 object-contain sm:h-14 sm:w-14"
+              className="h-12 w-12 object-contain mix-blend-screen sm:h-14 sm:w-14"
             />
             <div>
               <h1 className="text-2xl font-black">
@@ -1265,7 +1265,7 @@ export default function Home() {
                 height={160}
                 unoptimized
                 priority
-                className="mx-auto mb-6 h-32 w-32 object-contain sm:h-40 sm:w-40"
+                className="mx-auto mb-6 h-32 w-32 object-contain mix-blend-screen sm:h-40 sm:w-40"
               />
 
               <p className="mb-3 font-bold uppercase tracking-[0.3em] text-emerald-400">
