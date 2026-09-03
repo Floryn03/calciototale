@@ -1497,7 +1497,7 @@ export default function Home() {
                 <div className="grid gap-5 md:grid-cols-2">
 
                   <Input
-                    label="Nome giocatore"
+                    label="ID EA"
                     value={name}
                     onChange={setName}
                     placeholder="Es. FLORIN"
