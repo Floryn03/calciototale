@@ -486,7 +486,7 @@ export default function VotingHub({
         <section className="rounded-3xl border border-amber-400/30 bg-gradient-to-br from-amber-400/10 via-slate-900 to-emerald-500/10 p-6 sm:p-8">
           <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
             <div className="flex items-center gap-4">
-              <Image src="/calcio-totale-2026-logo.png" alt="Logo ufficiale Calcio Totale 2026" width={96} height={96} unoptimized className="h-20 w-20 shrink-0 object-contain sm:h-24 sm:w-24" />
+              <Image src="/calcio-totale-2026-logo.png" alt="Logo ufficiale Calcio Totale 2026" width={96} height={96} unoptimized className="h-20 w-20 shrink-0 object-contain mix-blend-screen sm:h-24 sm:w-24" />
               <div>
                 <p className="text-sm font-black uppercase tracking-[0.2em] text-amber-300">CALCIO TOTALE</p>
                 <h2 className="mt-2 text-3xl font-black">👑 MVP e Top 11</h2>
@@ -551,7 +551,7 @@ export default function VotingHub({
   return (
     <div className="space-y-7">
       <section className="rounded-3xl border border-emerald-400/25 bg-gradient-to-br from-emerald-400/10 via-slate-900 to-slate-900 p-6 sm:p-8">
-        <div className="flex items-center gap-4"><Image src="/calcio-totale-2026-logo.png" alt="Logo ufficiale Calcio Totale 2026" width={96} height={96} unoptimized className="h-20 w-20 shrink-0 object-contain sm:h-24 sm:w-24" /><div><p className="text-sm font-black uppercase tracking-[0.2em] text-emerald-300">CALCIO TOTALE</p><h2 className="mt-2 text-3xl font-black">⭐ Votazioni partita</h2><p className="mt-2 text-sm text-slate-400">Voti, commenti, media e classifica sono salvati nel database.</p></div></div>
+        <div className="flex items-center gap-4"><Image src="/calcio-totale-2026-logo.png" alt="Logo ufficiale Calcio Totale 2026" width={96} height={96} unoptimized className="h-20 w-20 shrink-0 object-contain mix-blend-screen sm:h-24 sm:w-24" /><div><p className="text-sm font-black uppercase tracking-[0.2em] text-emerald-300">CALCIO TOTALE</p><h2 className="mt-2 text-3xl font-black">⭐ Votazioni partita</h2><p className="mt-2 text-sm text-slate-400">Voti, commenti, media e classifica sono salvati nel database.</p></div></div>
         <div className="mt-5 grid gap-3 md:grid-cols-3">
           <select value={selectedCompetitionId} onChange={(event) => setSelectedCompetitionId(event.target.value)} className="min-h-11 rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm font-bold">
             <option value="">Partite singole / senza torneo</option>
