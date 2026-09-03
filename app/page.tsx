@@ -1600,7 +1600,7 @@ export default function Home() {
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="🔎 Cerca per nome, PSN o posizione..."
+              placeholder="🔎 Cerca per ID PlayStation, ID EA o posizione..."
               className="mb-6 w-full rounded-xl border border-slate-800 bg-slate-900 px-5 py-4 outline-none focus:border-emerald-500"
             />
 
@@ -2900,7 +2900,7 @@ function PlayerCard({
             </h3>
 
             <p className="mt-1 text-sm text-slate-500">
-              PSN: {player.psn_id}
+              ID EA: {player.psn_id}
             </p>
 
           </div>
