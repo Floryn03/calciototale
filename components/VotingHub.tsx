@@ -173,6 +173,7 @@ export default function VotingHub({
   const [savingMatch, setSavingMatch] = useState(false);
   const [selectedWeek, setSelectedWeek] = useState(() => weekStartFromDate(new Date().toISOString().slice(0, 10)));
   const [participants, setParticipants] = useState<string[]>([]);
+  const [participantRoles, setParticipantRoles] = useState<Record<string, string>>({});
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [loading, setLoading] = useState(true);
   const [savingPlayerId, setSavingPlayerId] = useState<string | null>(null);
@@ -254,21 +255,25 @@ export default function VotingHub({
   useEffect(() => {
     if (!selectedMatchId) {
       setParticipants([]);
+      setParticipantRoles({});
       return;
     }
 
     void (async () => {
       const { data, error } = await supabase
         .from("presences")
-        .select("player_id")
+        .select("player_id, event_role")
         .eq("event_id", selectedMatchId)
         .eq("status", "Presente");
       if (error) {
         console.error("Errore partecipanti partita", error);
         setParticipants([]);
+        setParticipantRoles({});
         return;
       }
-      setParticipants((data || []).map((item) => item.player_id));
+      const rows = data || [];
+      setParticipants(rows.map((item) => item.player_id));
+      setParticipantRoles(Object.fromEntries(rows.map((item) => [item.player_id, item.event_role || ""])));
     })();
   }, [selectedMatchId]);
 
@@ -349,8 +354,11 @@ export default function VotingHub({
   );
   const selectedMvp = mvps.find((mvp) => mvp.week_start === selectedWeek) || null;
   const matchParticipants = participants
-    .map((playerId) => playersById.get(playerId))
-    .filter((player): player is Player => Boolean(player));
+    .map((playerId) => {
+      const player = playersById.get(playerId);
+      return player ? { ...player, eventRole: participantRoles[playerId] || player.position } : null;
+    })
+    .filter((player): player is Player & { eventRole: string } => Boolean(player));
 
   async function callManager(body: Record<string, unknown>) {
     const { data, error } = await supabase.functions.invoke("manage-votazioni", { body });
@@ -580,7 +588,7 @@ export default function VotingHub({
           {matchParticipants.length === 0 ? <p className="mt-5 rounded-2xl bg-slate-950 p-4 text-sm text-slate-400">Non risultano giocatori presenti: prima registra le presenze per questa partita.</p> : <div className="mt-5 space-y-4">{matchParticipants.map((player) => {
             const draft = drafts[player.id] || { rating: "", comment: "" };
             const hasOwnRating = selectedMatchRatings.some((rating) => rating.player_id === player.id && rating.admin_id === viewerId);
-            return <div key={player.id} className="rounded-2xl bg-slate-950 p-4"><div className="flex items-center gap-3"><PlayerAvatar name={player.name} /><div><p className="font-black">{player.name}</p><p className="text-sm text-emerald-300">{player.position}</p></div></div><div className="mt-4 grid gap-3 md:grid-cols-[130px_1fr_auto_auto]"><input aria-label={`Voto ${player.name}`} type="number" min="1" max="10" step="0.5" value={draft.rating} onChange={(event) => setDrafts((current) => ({...current, [player.id]: {...draft, rating: event.target.value}}))} placeholder="Voto 1-10" className="min-h-11 rounded-xl border border-slate-700 bg-slate-900 px-4 py-3" /><input aria-label={`Commento ${player.name}`} value={draft.comment} onChange={(event) => setDrafts((current) => ({...current, [player.id]: {...draft, comment: event.target.value}}))} maxLength={1000} placeholder="Commento facoltativo" className="min-h-11 rounded-xl border border-slate-700 bg-slate-900 px-4 py-3" /><button type="button" onClick={() => saveRating(player)} disabled={savingPlayerId === player.id} className="min-h-11 rounded-xl bg-emerald-400 px-4 py-3 text-sm font-black text-slate-950 disabled:opacity-50">{savingPlayerId === player.id ? "⏳" : "Salva"}</button>{hasOwnRating && <button type="button" onClick={() => deleteRating(player)} disabled={savingPlayerId === player.id} className="min-h-11 rounded-xl border border-red-400/30 px-4 py-3 text-sm font-bold text-red-300 disabled:opacity-50">Elimina</button>}</div></div>;
+            return <div key={player.id} className="rounded-2xl bg-slate-950 p-4"><div className="flex items-center gap-3"><PlayerAvatar name={player.name} /><div><p className="font-black">{player.name}</p><p className="text-sm text-emerald-300">{player.eventRole}</p></div></div><div className="mt-4 grid gap-3 md:grid-cols-[130px_1fr_auto_auto]"><input aria-label={`Voto ${player.name}`} type="number" min="1" max="10" step="0.5" value={draft.rating} onChange={(event) => setDrafts((current) => ({...current, [player.id]: {...draft, rating: event.target.value}}))} placeholder="Voto 1-10" className="min-h-11 rounded-xl border border-slate-700 bg-slate-900 px-4 py-3" /><input aria-label={`Commento ${player.name}`} value={draft.comment} onChange={(event) => setDrafts((current) => ({...current, [player.id]: {...draft, comment: event.target.value}}))} maxLength={1000} placeholder="Commento facoltativo" className="min-h-11 rounded-xl border border-slate-700 bg-slate-900 px-4 py-3" /><button type="button" onClick={() => saveRating(player)} disabled={savingPlayerId === player.id} className="min-h-11 rounded-xl bg-emerald-400 px-4 py-3 text-sm font-black text-slate-950 disabled:opacity-50">{savingPlayerId === player.id ? "⏳" : "Salva"}</button>{hasOwnRating && <button type="button" onClick={() => deleteRating(player)} disabled={savingPlayerId === player.id} className="min-h-11 rounded-xl border border-red-400/30 px-4 py-3 text-sm font-bold text-red-300 disabled:opacity-50">Elimina</button>}</div></div>;
           })}</div>}
         </section>
       )}
@@ -589,7 +597,7 @@ export default function VotingHub({
         <h3 className="text-xl font-black">Voti e commenti della partita</h3>
         {!currentMatch ? <p className="mt-4 text-sm text-slate-500">Seleziona una partita per vedere i risultati.</p> : matchParticipants.length === 0 ? <p className="mt-4 text-sm text-slate-500">Nessun giocatore presente registrato.</p> : <div className="mt-5 grid gap-4 md:grid-cols-2">{matchParticipants.map((player) => {
           const entries = selectedMatchRatings.filter((rating) => rating.player_id === player.id);
-          return <div key={player.id} className="rounded-2xl bg-slate-950 p-4"><div className="flex items-center justify-between gap-3"><div className="flex items-center gap-3"><PlayerAvatar name={player.name} /><div><p className="font-bold">{player.name}</p><p className="text-sm text-emerald-300">{player.position}</p></div></div><VoteScore value={average(entries)} /></div><p className="mt-3 text-xs text-slate-500">{entries.length} votazioni ricevute</p>{entries.filter((entry) => entry.comment).map((entry) => <p key={entry.id} className="mt-2 rounded-xl bg-slate-900 p-3 text-sm text-slate-300">“{entry.comment}”</p>)}</div>;
+          return <div key={player.id} className="rounded-2xl bg-slate-950 p-4"><div className="flex items-center justify-between gap-3"><div className="flex items-center gap-3"><PlayerAvatar name={player.name} /><div><p className="font-bold">{player.name}</p><p className="text-sm text-emerald-300">{player.eventRole}</p></div></div><VoteScore value={average(entries)} /></div><p className="mt-3 text-xs text-slate-500">{entries.length} votazioni ricevute</p>{entries.filter((entry) => entry.comment).map((entry) => <p key={entry.id} className="mt-2 rounded-xl bg-slate-900 p-3 text-sm text-slate-300">“{entry.comment}”</p>)}</div>;
         })}</div>}
       </section>
 
