@@ -2658,7 +2658,7 @@ export default function Home() {
                   label="ID giocatore"
                   value={playerLoginId}
                   onChange={setPlayerLoginId}
-                  placeholder="Es. floryn03 o CT-AB12"
+                  placeholder="Es. ID PlayStation"
                 />
                 <Input
                   label="Password"
