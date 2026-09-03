@@ -532,7 +532,7 @@ export default function VotingHub({
         </section>
 
         <section className="rounded-3xl border border-emerald-400/25 bg-slate-900 p-4 sm:p-7">
-          <div className="mb-5 flex flex-col items-center text-center"><Image src="/calcio-totale-2026-logo.png" alt="Logo ufficiale Calcio Totale 2026" width={64} height={64} unoptimized className="mb-2 h-16 w-16 object-contain" /><p className="text-sm font-black tracking-[0.2em] text-emerald-300">🏆 TOP 11 DELLA SETTIMANA</p><h3 className="mt-1 text-2xl font-black">Modulo ufficiale 3-5-2</h3></div>
+          <div className="mb-5 flex flex-col items-center text-center"><Image src="/calcio-totale-2026-logo.png" alt="Logo ufficiale Calcio Totale 2026" width={64} height={64} unoptimized className="mb-2 h-16 w-16 object-contain mix-blend-screen" /><p className="text-sm font-black tracking-[0.2em] text-emerald-300">🏆 TOP 11 DELLA SETTIMANA</p><h3 className="mt-1 text-2xl font-black">Modulo ufficiale 3-5-2</h3></div>
           <div className="rounded-3xl border border-emerald-200/15 bg-gradient-to-b from-emerald-700/35 via-emerald-800/25 to-emerald-950 p-3 sm:p-6">
             <div className="mx-auto grid max-w-3xl gap-4 text-center">
               <div className="mx-auto grid w-full max-w-sm grid-cols-2 gap-3"><TopCard slot={byPosition.get("ATT (PS)")!} /><TopCard slot={byPosition.get("ATT (PD)")!} /></div>
