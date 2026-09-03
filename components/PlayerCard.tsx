@@ -104,11 +104,11 @@ const PlayerCard = forwardRef<HTMLDivElement, { player: CardPlayer; card: Player
         {card.show_id && <p className="absolute left-[10%] top-[56%] max-w-[80%] truncate text-sm font-bold tracking-wide text-slate-700">{player.psn_id}</p>}
         {card.show_number && <p className="absolute right-[10%] top-[55%] text-xl font-black text-amber-700">#{player.shirt_number}</p>}
 
-        <div className="absolute left-[10%] right-[10%] top-[63%] grid grid-cols-3 gap-x-2 gap-y-3 text-slate-900">
+        <div className="absolute left-[10%] right-[10%] top-[63%] grid grid-cols-3 gap-x-2 gap-y-3">
           {stats.map(([visible, label, value]) => card[visible] && (
             <div key={label} className="text-center leading-none">
-              <span className="block text-xl font-black">{card[value] as number}</span>
-              <span className="mt-1 block text-[10px] font-black tracking-[0.16em] text-amber-800">{label}</span>
+              <span className="block text-xl font-black text-white drop-shadow-[0_1px_2px_rgba(0,0,0,.8)]">{card[value] as number}</span>
+              <span className="mt-1 block text-[10px] font-black tracking-[0.16em] text-emerald-400 drop-shadow-[0_1px_2px_rgba(0,0,0,.8)]">{label}</span>
             </div>
           ))}
         </div>
