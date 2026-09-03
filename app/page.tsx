@@ -2622,13 +2622,23 @@ export default function Home() {
         {showPlayerLogin && !isAdmin && !isPlayer && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 px-4 backdrop-blur-sm">
             <div className="w-full max-w-md rounded-3xl border border-slate-700 bg-slate-900 p-7 shadow-2xl">
-              <div className="flex items-start justify-between gap-4">
-                <div>
+              <div className="relative text-center">
+                <div className="pr-11">
                   <p className="font-bold uppercase tracking-[0.25em] text-emerald-400">
                     CALCIO TOTALE
                   </p>
-                  <h2 className="mt-2 text-3xl font-black">👤 Accesso giocatore</h2>
-                  <p className="mt-2 text-sm text-slate-400">
+                  <h2 className="mt-3 flex items-center justify-center gap-3 text-3xl font-black">
+                    <Image
+                      src="/calcio-totale-2026-logo.png"
+                      alt="Logo Calcio Totale"
+                      width={52}
+                      height={52}
+                      unoptimized
+                      className="h-12 w-12 object-contain"
+                    />
+                    <span>Accesso giocatore</span>
+                  </h2>
+                  <p className="mt-3 text-sm text-slate-400">
                     Usa l’ID e la password ricevuti dall’amministratore.
                   </p>
                 </div>
@@ -2641,7 +2651,7 @@ export default function Home() {
                     }
                   }}
                   disabled={authLoading}
-                  className="min-h-11 min-w-11 touch-manipulation text-2xl text-slate-500 hover:text-white disabled:opacity-50"
+                  className="absolute right-0 top-0 min-h-11 min-w-11 touch-manipulation text-2xl text-slate-500 hover:text-white disabled:opacity-50"
                 >
                   ✕
                 </button>
