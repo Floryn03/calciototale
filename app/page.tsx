@@ -1774,6 +1774,7 @@ export default function Home() {
                                   </td>
                                   <td className="px-5 py-4">
                                     {(isAdmin || player.id === sessionPlayerId) ? (
+                                      <>
                                       <div className="flex flex-wrap gap-2">
                                         <PresenceButton
                                           text="🟢"
@@ -1824,6 +1825,7 @@ export default function Home() {
                                           </div>
                                         </div>
                                       )}
+                                      </>
                                     ) : (
                                       <span className="text-sm text-slate-500">Sola lettura</span>
                                     )}
