@@ -1256,35 +1256,46 @@ export default function Home() {
         {activeSection === "dashboard" && (
           <div>
 
-            <div className="mb-10">
+            <div className="relative mb-10 overflow-hidden rounded-3xl border border-emerald-400/20 bg-gradient-to-br from-slate-900 via-slate-950 to-emerald-950/35 px-5 py-8 shadow-2xl sm:px-10 sm:py-10">
+              <div className="absolute inset-x-0 top-0 flex h-1.5">
+                <span className="w-1/3 bg-emerald-500" />
+                <span className="w-1/3 bg-slate-100" />
+                <span className="w-1/3 bg-red-500" />
+              </div>
+              <div className="absolute -right-24 -top-28 h-64 w-64 rounded-full bg-red-500/10 blur-3xl" />
+              <div className="absolute -bottom-32 -left-24 h-64 w-64 rounded-full bg-emerald-500/10 blur-3xl" />
 
-              <Image
-                src="/calcio-totale-2026-logo.png"
-                alt="Logo ufficiale Calcio Totale 2026"
-                width={160}
-                height={160}
-                unoptimized
-                priority
-                className="mx-auto mb-6 h-32 w-32 object-contain mix-blend-screen sm:h-40 sm:w-40"
-              />
+              <div className="relative flex flex-col items-center gap-7 text-center lg:flex-row lg:gap-10 lg:text-left">
+                <Image
+                  src="/calcio-totale-2026-logo.png"
+                  alt="Logo ufficiale Calcio Totale 2026"
+                  width={160}
+                  height={160}
+                  unoptimized
+                  priority
+                  className="h-28 w-28 shrink-0 object-contain mix-blend-screen sm:h-36 sm:w-36"
+                />
 
-              <p className="mb-3 font-bold uppercase tracking-[0.3em] text-emerald-400">
-                CALCIO TOTALE
-              </p>
+                <div className="max-w-4xl">
+                  <p className="mb-3 text-sm font-black uppercase tracking-[0.28em] sm:text-base">
+                    <span className="text-emerald-400">CALCIO</span>
+                    <span className="px-2 text-slate-100">TOTALE</span>
+                    <span className="text-red-400">2026</span>
+                  </p>
 
-              <h2 className="max-w-4xl text-4xl font-black leading-tight md:text-6xl">
-                Tutto il tuo calcio,
-                <span className="text-emerald-400">
-                  {" "}in un unico posto.
-                </span>
-              </h2>
+                  <h2 className="text-4xl font-black leading-[1.05] tracking-tight sm:text-5xl lg:text-6xl">
+                    Tutto il tuo calcio,
+                    <br />
+                    <span className="text-emerald-400">in un </span>
+                    <span className="text-slate-50">unico </span>
+                    <span className="text-red-400">posto.</span>
+                  </h2>
 
-              <p className="mt-5 max-w-3xl text-lg text-slate-400">
-                Gestisci giocatori, presenze, eventi,
-                competizioni, votazioni, MVP e statistiche
-                della tua squadra.
-              </p>
-
+                  <p className="mx-auto mt-5 max-w-3xl text-base leading-relaxed text-slate-300 sm:text-lg lg:mx-0">
+                    Gestisci giocatori, presenze, eventi, competizioni, votazioni, MVP e statistiche della tua squadra.
+                  </p>
+                </div>
+              </div>
             </div>
 
             <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
