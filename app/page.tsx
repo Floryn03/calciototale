@@ -35,6 +35,20 @@ type EventItem = {
   event_time: string | null;
 };
 
+type MatchPlayerStat = {
+  match_id: string;
+  player_id: string;
+  goals: number;
+  assists: number;
+};
+
+type LeaderboardEntry = {
+  player_id: string;
+  player_name: string;
+  goals: number;
+  assists: number;
+};
+
 type PlayerAccount = {
   user_id: string;
   player_id: string;
@@ -142,6 +156,7 @@ export default function Home() {
 
   const [players, setPlayers] = useState<Player[]>([]);
   const [presences, setPresences] = useState<Presence[]>([]);
+  const [matchPlayerStats, setMatchPlayerStats] = useState<MatchPlayerStat[]>([]);
 
   const [loadingPlayers, setLoadingPlayers] = useState(true);
   const [loadingPresences, setLoadingPresences] = useState(true);
@@ -575,6 +590,20 @@ export default function Home() {
     setLoadingPlayers(false);
   }
 
+  const loadMatchPlayerStats = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("match_player_stats")
+      .select("match_id, player_id, goals, assists");
+
+    if (error) {
+      console.error("Errore caricamento classifiche gol e assist:", error);
+      setMatchPlayerStats([]);
+      return;
+    }
+
+    setMatchPlayerStats((data || []) as MatchPlayerStat[]);
+  }, []);
+
   // =========================================================
   // LOAD PRESENCES
   // =========================================================
@@ -625,6 +654,12 @@ export default function Home() {
     loadPlayers();
     loadEvents();
   }, []);
+
+  useEffect(() => {
+    if (activeSection === "dashboard") {
+      void loadMatchPlayerStats();
+    }
+  }, [activeSection, loadMatchPlayerStats]);
 
   useEffect(() => {
     const presenceLoad = window.setTimeout(() => {
@@ -830,6 +865,39 @@ export default function Home() {
   ).length;
 
   const inactivePlayers = players.length - activePlayers;
+
+  const leaderboardEntries = useMemo<LeaderboardEntry[]>(() => {
+    const totals = new Map<string, { goals: number; assists: number }>();
+    for (const stat of matchPlayerStats) {
+      const current = totals.get(stat.player_id) || { goals: 0, assists: 0 };
+      current.goals += Number(stat.goals) || 0;
+      current.assists += Number(stat.assists) || 0;
+      totals.set(stat.player_id, current);
+    }
+
+    return [...totals.entries()]
+      .map(([playerId, totals]) => {
+        const player = players.find((item) => item.id === playerId);
+        return player
+          ? { player_id: playerId, player_name: player.name, ...totals }
+          : null;
+      })
+      .filter((entry): entry is LeaderboardEntry => Boolean(entry));
+  }, [matchPlayerStats, players]);
+
+  const goalsLeaderboard = useMemo(
+    () => leaderboardEntries
+      .filter((entry) => entry.goals > 0)
+      .sort((a, b) => b.goals - a.goals || b.assists - a.assists || a.player_name.localeCompare(b.player_name)),
+    [leaderboardEntries]
+  );
+
+  const assistsLeaderboard = useMemo(
+    () => leaderboardEntries
+      .filter((entry) => entry.assists > 0)
+      .sort((a, b) => b.assists - a.assists || b.goals - a.goals || a.player_name.localeCompare(b.player_name)),
+    [leaderboardEntries]
+  );
 
   // =========================================================
   // PRESENCE
@@ -1328,6 +1396,27 @@ export default function Home() {
                 text="Prossimi appuntamenti"
               />
 
+            </div>
+
+            <div className="mt-10 grid gap-6 lg:grid-cols-2">
+              <LeaderboardCard
+                icon="⚽"
+                title="Classifica marcatori"
+                description="Gol segnati nelle partite registrate"
+                entries={goalsLeaderboard}
+                valueKey="goals"
+                valueLabel="gol"
+                accent="amber"
+              />
+              <LeaderboardCard
+                icon="🎯"
+                title="Classifica assist"
+                description="Assist registrati nelle partite"
+                entries={assistsLeaderboard}
+                valueKey="assists"
+                valueLabel="assist"
+                accent="sky"
+              />
             </div>
 
             <div className="mt-12 grid gap-6 lg:grid-cols-2">
