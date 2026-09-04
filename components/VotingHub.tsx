@@ -81,6 +81,8 @@ const officialRoles = [
   "ATT (PD)",
 ];
 
+const awardRoles = ["POR", "DCD", "DCC", "DCS", "ES", "ED", "CCS", "CDC", "CCD", "ATT"];
+
 function weekStartFromDate(value: string) {
   const [year, month, day] = value.split("-").map(Number);
   const date = new Date(Date.UTC(year, month - 1, day));
@@ -362,6 +364,21 @@ export default function VotingHub({
       }
   );
   const selectedMvp = mvps.find((mvp) => mvp.week_start === selectedWeek) || null;
+  const roleAwards = awardRoles.map((role) => {
+    const candidates = selectedWeekRatings
+      .filter((rating) => {
+        const ratingRole = rating.position.startsWith("ATT") ? "ATT" : rating.position;
+        return ratingRole === role && rating.votes_count >= minimumVotes;
+      })
+      .sort(
+        (a, b) =>
+          b.average_rating - a.average_rating ||
+          b.votes_count - a.votes_count ||
+          b.matches_count - a.matches_count ||
+          a.player_name.localeCompare(b.player_name)
+      );
+    return { role, winner: candidates[0] || null };
+  });
   const matchParticipants = participants
     .map((playerId) => {
       const player = playersById.get(playerId);
@@ -572,6 +589,30 @@ export default function VotingHub({
               <div className="mx-auto grid w-full max-w-2xl grid-cols-3 gap-3"><TopCard slot={byPosition.get("DCS")!} /><TopCard slot={byPosition.get("DCC")!} /><TopCard slot={byPosition.get("DCD")!} /></div>
               <div className="mx-auto w-full max-w-40"><TopCard slot={byPosition.get("POR")!} /></div>
             </div>
+          </div>
+        </section>
+
+        <section className="rounded-3xl border border-amber-400/30 bg-gradient-to-br from-amber-400/10 via-slate-900 to-slate-900 p-5 sm:p-7">
+          <div className="text-center">
+            <p className="text-sm font-black tracking-[0.2em] text-amber-300">🏅 MIGLIORI PER RUOLO</p>
+            <h3 className="mt-1 text-2xl font-black">I migliori della settimana</h3>
+            <p className="mt-2 text-sm text-slate-400">Media voti calcolata sul ruolo scelto nella presenza.</p>
+          </div>
+          <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            {roleAwards.map(({ role, winner }) => (
+              <div key={role} className="rounded-2xl border border-amber-300/20 bg-slate-950 p-4 text-center">
+                <p className="text-xs font-black text-amber-300">{role}</p>
+                {winner ? (
+                  <>
+                    <p className="mt-2 truncate font-black">{winner.player_name}</p>
+                    <p className="mt-1 font-mono text-lg font-black text-emerald-300">{winner.average_rating.toFixed(2)}</p>
+                    <p className="text-xs text-slate-500">{winner.votes_count} voti · {winner.matches_count} partite</p>
+                  </>
+                ) : (
+                  <p className="mt-3 text-sm text-slate-500">Nessun dato idoneo</p>
+                )}
+              </div>
+            ))}
           </div>
         </section>
       </div>
