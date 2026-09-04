@@ -256,7 +256,7 @@ Deno.serve(async (request: Request) => {
   if (!user) return json({ error: "Operazione riservata all’amministratore." }, 403);
 
   let body: {
-    action?: "save_rating" | "delete_rating" | "recalculate" | "update_settings";
+    action?: "save_rating" | "delete_rating" | "save_match_stats" | "recalculate" | "update_settings";
     match_id?: string;
     player_id?: string;
     rating?: number;
@@ -298,7 +298,11 @@ Deno.serve(async (request: Request) => {
       if (error) throw error;
     }
 
-    if (body.action === "save_rating" || body.action === "delete_rating") {
+    if (
+      body.action === "save_rating" ||
+      body.action === "delete_rating" ||
+      body.action === "save_match_stats"
+    ) {
       if (!body.match_id || !body.player_id) {
         return json({ error: "Partita o giocatore non validi." }, 400);
       }
@@ -320,6 +324,30 @@ Deno.serve(async (request: Request) => {
       if (!presence) return json({ error: "Puoi votare solo un giocatore presente alla partita." }, 400);
 
       const weekStart = weekStartFromDate(match.event_date);
+
+      if (body.action === "save_match_stats") {
+        const goals = Number(body.goals ?? 0);
+        const assists = Number(body.assists ?? 0);
+        if (!Number.isInteger(goals) || goals < 0 || goals > 99) {
+          return json({ error: "I gol devono essere un numero intero tra 0 e 99." }, 400);
+        }
+        if (!Number.isInteger(assists) || assists < 0 || assists > 99) {
+          return json({ error: "Gli assist devono essere un numero intero tra 0 e 99." }, 400);
+        }
+
+        const { error: statsError } = await client.from("match_player_stats").upsert(
+          {
+            match_id: body.match_id,
+            player_id: body.player_id,
+            goals,
+            assists,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "match_id,player_id" }
+        );
+        if (statsError) throw statsError;
+        return json({ week_start: weekStart, goals, assists });
+      }
 
       if (body.action === "save_rating") {
         const rating = Number(body.rating);
