@@ -2972,6 +2972,77 @@ function Input({
   );
 }
 
+function LeaderboardCard({
+  icon,
+  title,
+  description,
+  entries,
+  valueKey,
+  valueLabel,
+  accent,
+}: {
+  icon: string;
+  title: string;
+  description: string;
+  entries: LeaderboardEntry[];
+  valueKey: "goals" | "assists";
+  valueLabel: string;
+  accent: "amber" | "sky";
+}) {
+  const accentStyles = accent === "amber"
+    ? {
+        border: "border-amber-400/25",
+        badge: "bg-amber-400/10 text-amber-300",
+        rank: "text-amber-300",
+      }
+    : {
+        border: "border-sky-400/25",
+        badge: "bg-sky-400/10 text-sky-300",
+        rank: "text-sky-300",
+      };
+
+  return (
+    <div className={`rounded-3xl border bg-slate-900 p-5 sm:p-7 ${accentStyles.border}`}>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h3 className="text-xl font-black">
+            {icon} {title}
+          </h3>
+          <p className="mt-1 text-sm text-slate-500">{description}</p>
+        </div>
+        <span className={`rounded-xl px-3 py-2 text-xs font-black uppercase ${accentStyles.badge}`}>
+          Stagione
+        </span>
+      </div>
+
+      {entries.length === 0 ? (
+        <p className="mt-5 rounded-2xl bg-slate-950 p-4 text-sm text-slate-500">
+          Nessun {valueLabel} registrato ancora.
+        </p>
+      ) : (
+        <ol className="mt-5 space-y-2">
+          {entries.map((entry, index) => (
+            <li
+              key={entry.player_id}
+              className="flex items-center justify-between gap-4 rounded-2xl bg-slate-950 px-4 py-3"
+            >
+              <div className="flex min-w-0 items-center gap-3">
+                <span className={`w-5 text-center font-black ${accentStyles.rank}`}>
+                  {index + 1}
+                </span>
+                <span className="truncate font-bold">{entry.player_name}</span>
+              </div>
+              <span className={`shrink-0 rounded-lg px-3 py-1 font-black ${accentStyles.badge}`}>
+                {entry[valueKey]} {valueLabel}
+              </span>
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  );
+}
+
 function PlayerCard({
   player,
   onDelete,
