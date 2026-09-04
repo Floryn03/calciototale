@@ -100,7 +100,28 @@ async function recalculateWeek(
   if (playersError) throw playersError;
 
   const playersById = new Map((players || []).map((player) => [player.id, player]));
-  const grouped = new Map<string, { total: number; votes: number; matches: Set<string> }>();
+  const matchIds = [...new Set((ratings || []).map((rating) => rating.match_id))];
+  const { data: presences, error: presencesError } = matchIds.length
+    ? await client
+        .from("presences")
+        .select("player_id, event_id, event_role")
+        .in("event_id", matchIds)
+        .eq("status", "Presente")
+    : { data: [], error: null };
+
+  if (presencesError) throw presencesError;
+
+  const eventRoles = new Map(
+    (presences || [])
+      .filter((presence) => presence.event_role)
+      .map((presence) => [`${presence.event_id}:${presence.player_id}`, presence.event_role])
+  );
+  const grouped = new Map<string, {
+    total: number;
+    votes: number;
+    matches: Set<string>;
+    roleCounts: Map<string, number>;
+  }>();
 
   for (const rating of ratings || []) {
     if (!playersById.has(rating.player_id)) continue;
@@ -108,10 +129,17 @@ async function recalculateWeek(
       total: 0,
       votes: 0,
       matches: new Set<string>(),
+      roleCounts: new Map<string, number>(),
     };
     current.total += Number(rating.rating);
     current.votes += 1;
     current.matches.add(rating.match_id);
+
+    const eventRole = eventRoles.get(`${rating.match_id}:${rating.player_id}`);
+    if (eventRole) {
+      current.roleCounts.set(eventRole, (current.roleCounts.get(eventRole) || 0) + 1);
+    }
+
     grouped.set(rating.player_id, current);
   }
 
@@ -123,10 +151,17 @@ async function recalculateWeek(
       const matchCoverage = Math.min(values.matches.size / 2, 1);
       const performance = average * (0.65 + reliability * 0.25 + matchCoverage * 0.1);
 
+      const eventRole = [...values.roleCounts.entries()]
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0];
+      const position =
+        eventRole === "ATT" && (player.position === "ATT (PS)" || player.position === "ATT (PD)")
+          ? player.position
+          : eventRole || player.position;
+
       return {
         player_id: playerId,
         player_name: player.name,
-        position: player.position,
+        position,
         average_rating: Number(average.toFixed(2)),
         votes_count: values.votes,
         matches_count: values.matches.size,
