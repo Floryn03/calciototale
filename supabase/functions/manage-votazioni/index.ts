@@ -261,6 +261,8 @@ Deno.serve(async (request: Request) => {
     player_id?: string;
     rating?: number;
     comment?: string;
+    goals?: number;
+    assists?: number;
     week_start?: string;
     minimum_votes?: number;
   };
@@ -324,6 +326,15 @@ Deno.serve(async (request: Request) => {
         if (!Number.isFinite(rating) || rating < 1 || rating > 10) {
           return json({ error: "Il voto deve essere compreso tra 1 e 10." }, 400);
         }
+        const goals = Number(body.goals ?? 0);
+        const assists = Number(body.assists ?? 0);
+        if (!Number.isInteger(goals) || goals < 0 || goals > 99) {
+          return json({ error: "I gol devono essere un numero intero tra 0 e 99." }, 400);
+        }
+        if (!Number.isInteger(assists) || assists < 0 || assists > 99) {
+          return json({ error: "Gli assist devono essere un numero intero tra 0 e 99." }, 400);
+        }
+
         const comment = body.comment?.trim().slice(0, 1000) || null;
         const { error } = await client.from("match_ratings").upsert(
           {
@@ -338,6 +349,18 @@ Deno.serve(async (request: Request) => {
           { onConflict: "match_id,player_id,admin_id" }
         );
         if (error) throw error;
+
+        const { error: statsError } = await client.from("match_player_stats").upsert(
+          {
+            match_id: body.match_id,
+            player_id: body.player_id,
+            goals,
+            assists,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "match_id,player_id" }
+        );
+        if (statsError) throw statsError;
       } else {
         const { error } = await client
           .from("match_ratings")
