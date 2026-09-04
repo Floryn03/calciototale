@@ -403,6 +403,25 @@ export default function VotingHub({
     }
   }
 
+  async function resetMatchStats(player: Player) {
+    if (!window.confirm(`Azzerare gol e assist di ${player.name} per questa partita?`)) return;
+    setSavingPlayerId(player.id);
+    try {
+      await callManager({
+        action: "save_match_stats",
+        match_id: selectedMatchId,
+        player_id: player.id,
+        goals: 0,
+        assists: 0,
+      });
+      await loadData();
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Errore durante l’azzeramento di gol e assist.");
+    } finally {
+      setSavingPlayerId(null);
+    }
+  }
+
   async function deleteRating(player: Player) {
     if (!window.confirm(`Eliminare il tuo voto per ${player.name}?`)) return;
     setSavingPlayerId(player.id);
@@ -599,7 +618,7 @@ export default function VotingHub({
           {matchParticipants.length === 0 ? <p className="mt-5 rounded-2xl bg-slate-950 p-4 text-sm text-slate-400">Non risultano giocatori presenti: prima registra le presenze per questa partita.</p> : <div className="mt-5 space-y-4">{matchParticipants.map((player) => {
             const draft = drafts[player.id] || { rating: "", comment: "", goals: "0", assists: "0" };
             const hasOwnRating = selectedMatchRatings.some((rating) => rating.player_id === player.id && rating.admin_id === viewerId);
-            return <div key={player.id} className="rounded-2xl bg-slate-950 p-4"><div className="flex items-center gap-3"><PlayerAvatar name={player.name} /><div><p className="font-black">{player.name}</p><p className="text-sm text-emerald-300">{player.eventRole}</p></div></div><div className="mt-4 grid gap-3 md:grid-cols-[110px_1fr_90px_90px_auto_auto]"><input aria-label={`Voto ${player.name}`} type="number" min="1" max="10" step="0.5" value={draft.rating} onChange={(event) => setDrafts((current) => ({...current, [player.id]: {...draft, rating: event.target.value}}))} placeholder="Voto 1-10" className="min-h-11 rounded-xl border border-slate-700 bg-slate-900 px-4 py-3" /><input aria-label={`Commento ${player.name}`} value={draft.comment} onChange={(event) => setDrafts((current) => ({...current, [player.id]: {...draft, comment: event.target.value}}))} maxLength={1000} placeholder="Commento facoltativo" className="min-h-11 rounded-xl border border-slate-700 bg-slate-900 px-4 py-3" /><input aria-label={`Gol ${player.name}`} type="number" min="0" max="99" step="1" value={draft.goals} onChange={(event) => setDrafts((current) => ({...current, [player.id]: {...draft, goals: event.target.value}}))} placeholder="Gol" className="min-h-11 rounded-xl border border-amber-400/30 bg-slate-900 px-4 py-3" /><input aria-label={`Assist ${player.name}`} type="number" min="0" max="99" step="1" value={draft.assists} onChange={(event) => setDrafts((current) => ({...current, [player.id]: {...draft, assists: event.target.value}}))} placeholder="Assist" className="min-h-11 rounded-xl border border-sky-400/30 bg-slate-900 px-4 py-3" /><button type="button" onClick={() => saveRating(player)} disabled={savingPlayerId === player.id} className="min-h-11 rounded-xl bg-emerald-400 px-4 py-3 text-sm font-black text-slate-950 disabled:opacity-50">{savingPlayerId === player.id ? "⏳" : "Salva"}</button>{hasOwnRating && <button type="button" onClick={() => deleteRating(player)} disabled={savingPlayerId === player.id} className="min-h-11 rounded-xl border border-red-400/30 px-4 py-3 text-sm font-bold text-red-300 disabled:opacity-50">Elimina</button>}</div></div>;
+            return <div key={player.id} className="rounded-2xl bg-slate-950 p-4"><div className="flex items-center gap-3"><PlayerAvatar name={player.name} /><div><p className="font-black">{player.name}</p><p className="text-sm text-emerald-300">{player.eventRole}</p></div></div><div className="mt-4 grid gap-3 md:grid-cols-[110px_1fr_90px_90px_auto_auto_auto]"><input aria-label={`Voto ${player.name}`} type="number" min="1" max="10" step="0.5" value={draft.rating} onChange={(event) => setDrafts((current) => ({...current, [player.id]: {...draft, rating: event.target.value}}))} placeholder="Voto 1-10" className="min-h-11 rounded-xl border border-slate-700 bg-slate-900 px-4 py-3" /><input aria-label={`Commento ${player.name}`} value={draft.comment} onChange={(event) => setDrafts((current) => ({...current, [player.id]: {...draft, comment: event.target.value}}))} maxLength={1000} placeholder="Commento facoltativo" className="min-h-11 rounded-xl border border-slate-700 bg-slate-900 px-4 py-3" /><input aria-label={`Gol ${player.name}`} type="number" min="0" max="99" step="1" value={draft.goals} onChange={(event) => setDrafts((current) => ({...current, [player.id]: {...draft, goals: event.target.value}}))} placeholder="Gol" className="min-h-11 rounded-xl border border-amber-400/30 bg-slate-900 px-4 py-3" /><input aria-label={`Assist ${player.name}`} type="number" min="0" max="99" step="1" value={draft.assists} onChange={(event) => setDrafts((current) => ({...current, [player.id]: {...draft, assists: event.target.value}}))} placeholder="Assist" className="min-h-11 rounded-xl border border-sky-400/30 bg-slate-900 px-4 py-3" /><button type="button" onClick={() => saveRating(player)} disabled={savingPlayerId === player.id} className="min-h-11 rounded-xl bg-emerald-400 px-4 py-3 text-sm font-black text-slate-950 disabled:opacity-50">{savingPlayerId === player.id ? "⏳" : "Salva"}</button><button type="button" onClick={() => resetMatchStats(player)} disabled={savingPlayerId === player.id} className="min-h-11 rounded-xl border border-amber-400/30 px-4 py-3 text-sm font-bold text-amber-200 disabled:opacity-50">↺ Azzera G/A</button>{hasOwnRating && <button type="button" onClick={() => deleteRating(player)} disabled={savingPlayerId === player.id} className="min-h-11 rounded-xl border border-red-400/30 px-4 py-3 text-sm font-bold text-red-300 disabled:opacity-50">Elimina</button>}</div></div>;
           })}</div>}
         </section>
       )}
