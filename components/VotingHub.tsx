@@ -63,8 +63,9 @@ type TopSlot = {
 };
 
 type WeeklyMvp = TopSlot;
+type MatchPlayerStat = { match_id: string; player_id: string; goals: number; assists: number };
 
-type Draft = { rating: string; comment: string };
+type Draft = { rating: string; comment: string; goals: string; assists: string };
 
 const officialRoles = [
   "POR",
@@ -174,6 +175,7 @@ export default function VotingHub({
   const [selectedWeek, setSelectedWeek] = useState(() => weekStartFromDate(new Date().toISOString().slice(0, 10)));
   const [participants, setParticipants] = useState<string[]>([]);
   const [participantRoles, setParticipantRoles] = useState<Record<string, string>>({});
+  const [matchStats, setMatchStats] = useState<Record<string, MatchPlayerStat>>({});
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [loading, setLoading] = useState(true);
   const [savingPlayerId, setSavingPlayerId] = useState<string | null>(null);
@@ -186,7 +188,7 @@ export default function VotingHub({
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const [ratingsResult, weeklyResult, topResult, mvpResult, settingsResult, userResult, competitionsResult, competitionMatchesResult] =
+    const [ratingsResult, weeklyResult, topResult, mvpResult, settingsResult, userResult, competitionsResult, competitionMatchesResult, statsResult] =
       await Promise.all([
         supabase
           .from("match_ratings")
@@ -204,6 +206,7 @@ export default function VotingHub({
         supabase.auth.getUser(),
         supabase.from("competitions").select("id, name, type, status").order("created_at", { ascending: false }),
         supabase.from("competition_event_matches").select("id, competition_id, event_id, match_number").order("match_number", { ascending: true }),
+        supabase.from("match_player_stats").select("match_id, player_id, goals, assists"),
       ]);
 
     if (ratingsResult.error || weeklyResult.error || topResult.error || mvpResult.error) {
@@ -225,6 +228,9 @@ export default function VotingHub({
     setViewerId(userResult.data.user?.id || null);
     setCompetitions((competitionsResult.data || []) as Competition[]);
     setCompetitionMatches((competitionMatchesResult.data || []) as CompetitionEventMatch[]);
+    setMatchStats(Object.fromEntries(
+      ((statsResult.data || []) as MatchPlayerStat[]).map((stat) => [`${stat.match_id}:${stat.player_id}`, stat])
+    ));
     setLoading(false);
   }, []);
 
@@ -287,13 +293,16 @@ export default function VotingHub({
           rating.player_id === playerId &&
           rating.admin_id === viewerId
       );
+      const stat = matchStats[`${selectedMatchId}:${playerId}`];
       next[playerId] = {
         rating: existing ? String(existing.rating) : "",
         comment: existing?.comment || "",
+        goals: String(stat?.goals || 0),
+        assists: String(stat?.assists || 0),
       };
     }
     setDrafts(next);
-  }, [participants, ratings, selectedMatchId, viewerId]);
+  }, [matchStats, participants, ratings, selectedMatchId, viewerId]);
 
   const weeks = useMemo(() => {
     const values = new Set<string>([
@@ -369,7 +378,7 @@ export default function VotingHub({
   }
 
   async function saveRating(player: Player) {
-    const draft = drafts[player.id] || { rating: "", comment: "" };
+    const draft = drafts[player.id] || { rating: "", comment: "", goals: "0", assists: "0" };
     const value = Number(draft.rating);
     if (!Number.isFinite(value) || value < 1 || value > 10) {
       alert("Inserisci un voto compreso tra 1 e 10.");
@@ -383,6 +392,8 @@ export default function VotingHub({
         player_id: player.id,
         rating: value,
         comment: draft.comment,
+        goals: Number(draft.goals || 0),
+        assists: Number(draft.assists || 0),
       });
       await loadData();
     } catch (error) {
@@ -586,9 +597,9 @@ export default function VotingHub({
         <section className="rounded-3xl border border-emerald-400/25 bg-slate-900 p-5 sm:p-7">
           <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="text-xl font-black">Inserisci i voti</h3><p className="mt-1 text-sm text-slate-500">Solo i giocatori segnati “Presente” in {currentMatch.name} possono essere votati.</p></div><button type="button" onClick={recalculateWeek} disabled={recalculating} className="min-h-11 rounded-xl border border-emerald-400/30 px-4 py-3 text-sm font-bold text-emerald-300 disabled:opacity-50">{recalculating ? "⏳ Ricalcolo…" : "↻ Ricalcola settimana"}</button></div>
           {matchParticipants.length === 0 ? <p className="mt-5 rounded-2xl bg-slate-950 p-4 text-sm text-slate-400">Non risultano giocatori presenti: prima registra le presenze per questa partita.</p> : <div className="mt-5 space-y-4">{matchParticipants.map((player) => {
-            const draft = drafts[player.id] || { rating: "", comment: "" };
+            const draft = drafts[player.id] || { rating: "", comment: "", goals: "0", assists: "0" };
             const hasOwnRating = selectedMatchRatings.some((rating) => rating.player_id === player.id && rating.admin_id === viewerId);
-            return <div key={player.id} className="rounded-2xl bg-slate-950 p-4"><div className="flex items-center gap-3"><PlayerAvatar name={player.name} /><div><p className="font-black">{player.name}</p><p className="text-sm text-emerald-300">{player.eventRole}</p></div></div><div className="mt-4 grid gap-3 md:grid-cols-[130px_1fr_auto_auto]"><input aria-label={`Voto ${player.name}`} type="number" min="1" max="10" step="0.5" value={draft.rating} onChange={(event) => setDrafts((current) => ({...current, [player.id]: {...draft, rating: event.target.value}}))} placeholder="Voto 1-10" className="min-h-11 rounded-xl border border-slate-700 bg-slate-900 px-4 py-3" /><input aria-label={`Commento ${player.name}`} value={draft.comment} onChange={(event) => setDrafts((current) => ({...current, [player.id]: {...draft, comment: event.target.value}}))} maxLength={1000} placeholder="Commento facoltativo" className="min-h-11 rounded-xl border border-slate-700 bg-slate-900 px-4 py-3" /><button type="button" onClick={() => saveRating(player)} disabled={savingPlayerId === player.id} className="min-h-11 rounded-xl bg-emerald-400 px-4 py-3 text-sm font-black text-slate-950 disabled:opacity-50">{savingPlayerId === player.id ? "⏳" : "Salva"}</button>{hasOwnRating && <button type="button" onClick={() => deleteRating(player)} disabled={savingPlayerId === player.id} className="min-h-11 rounded-xl border border-red-400/30 px-4 py-3 text-sm font-bold text-red-300 disabled:opacity-50">Elimina</button>}</div></div>;
+            return <div key={player.id} className="rounded-2xl bg-slate-950 p-4"><div className="flex items-center gap-3"><PlayerAvatar name={player.name} /><div><p className="font-black">{player.name}</p><p className="text-sm text-emerald-300">{player.eventRole}</p></div></div><div className="mt-4 grid gap-3 md:grid-cols-[110px_1fr_90px_90px_auto_auto]"><input aria-label={`Voto ${player.name}`} type="number" min="1" max="10" step="0.5" value={draft.rating} onChange={(event) => setDrafts((current) => ({...current, [player.id]: {...draft, rating: event.target.value}}))} placeholder="Voto 1-10" className="min-h-11 rounded-xl border border-slate-700 bg-slate-900 px-4 py-3" /><input aria-label={`Commento ${player.name}`} value={draft.comment} onChange={(event) => setDrafts((current) => ({...current, [player.id]: {...draft, comment: event.target.value}}))} maxLength={1000} placeholder="Commento facoltativo" className="min-h-11 rounded-xl border border-slate-700 bg-slate-900 px-4 py-3" /><input aria-label={`Gol ${player.name}`} type="number" min="0" max="99" step="1" value={draft.goals} onChange={(event) => setDrafts((current) => ({...current, [player.id]: {...draft, goals: event.target.value}}))} placeholder="Gol" className="min-h-11 rounded-xl border border-amber-400/30 bg-slate-900 px-4 py-3" /><input aria-label={`Assist ${player.name}`} type="number" min="0" max="99" step="1" value={draft.assists} onChange={(event) => setDrafts((current) => ({...current, [player.id]: {...draft, assists: event.target.value}}))} placeholder="Assist" className="min-h-11 rounded-xl border border-sky-400/30 bg-slate-900 px-4 py-3" /><button type="button" onClick={() => saveRating(player)} disabled={savingPlayerId === player.id} className="min-h-11 rounded-xl bg-emerald-400 px-4 py-3 text-sm font-black text-slate-950 disabled:opacity-50">{savingPlayerId === player.id ? "⏳" : "Salva"}</button>{hasOwnRating && <button type="button" onClick={() => deleteRating(player)} disabled={savingPlayerId === player.id} className="min-h-11 rounded-xl border border-red-400/30 px-4 py-3 text-sm font-bold text-red-300 disabled:opacity-50">Elimina</button>}</div></div>;
           })}</div>}
         </section>
       )}
