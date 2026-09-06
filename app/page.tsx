@@ -35,6 +35,14 @@ type EventItem = {
   event_time: string | null;
 };
 
+type CalendarEntry = {
+  id: string;
+  entry_date: string;
+  title: string;
+  entry_time: string | null;
+  note: string | null;
+};
+
 type WeeklyAvailabilityStatus = "" | "Presente" | "Assente";
 
 type WeeklyAvailability = {
@@ -218,8 +226,17 @@ export default function Home() {
 
   const [events, setEvents] = useState<EventItem[]>([]);
   const [selectedEventId, setSelectedEventId] = useState("");
-  const [calendarView, setCalendarView] = useState<"week" | "month">("week");
+  const [calendarView, setCalendarView] = useState<"week" | "month">("month");
   const [calendarFocusDate, setCalendarFocusDate] = useState(today);
+  const [calendarEntries, setCalendarEntries] = useState<CalendarEntry[]>([]);
+  const [calendarLoading, setCalendarLoading] = useState(false);
+  const [calendarSaving, setCalendarSaving] = useState(false);
+  const [calendarEditorOpen, setCalendarEditorOpen] = useState(false);
+  const [editingCalendarEntryId, setEditingCalendarEntryId] = useState<string | null>(null);
+  const [calendarEntryDate, setCalendarEntryDate] = useState(today);
+  const [calendarEntryTitle, setCalendarEntryTitle] = useState("");
+  const [calendarEntryTime, setCalendarEntryTime] = useState("");
+  const [calendarEntryNote, setCalendarEntryNote] = useState("");
   const [weeklyAvailabilityWeek, setWeeklyAvailabilityWeek] = useState(today);
   const [weeklyAvailability, setWeeklyAvailability] = useState<WeeklyAvailability[]>([]);
   const [weeklyAvailabilityDrafts, setWeeklyAvailabilityDrafts] = useState<Record<string, { status: WeeklyAvailabilityStatus; event_role: PresenceRole | "" }>>({});
@@ -271,6 +288,24 @@ export default function Home() {
     () => new Intl.DateTimeFormat("it-IT", { month: "long", year: "numeric" }).format(new Date(calendarFocusDate + "T12:00:00")),
     [calendarFocusDate]
   );
+  const loadCalendarEntries = useCallback(async () => {
+    setCalendarLoading(true);
+    const { data, error } = await supabase
+      .from("calendar_entries")
+      .select("id, entry_date, title, entry_time, note")
+      .gte("entry_date", calendarMonthDates[0])
+      .lte("entry_date", calendarMonthDates[calendarMonthDates.length - 1])
+      .order("entry_date", { ascending: true })
+      .order("entry_time", { ascending: true });
+
+    if (error) {
+      console.error("Errore caricamento calendario:", error);
+      setCalendarEntries([]);
+    } else {
+      setCalendarEntries((data || []) as CalendarEntry[]);
+    }
+    setCalendarLoading(false);
+  }, [calendarMonthDates]);
 
   // =========================================================
   // ADMIN AUTHENTICATION
@@ -732,6 +767,11 @@ export default function Home() {
       void loadMatchPlayerStats();
     }
   }, [activeSection, loadMatchPlayerStats]);
+
+  useEffect(() => {
+    if (activeSection !== "calendar" || (!isAdmin && !sessionPlayerId)) return;
+    void loadCalendarEntries();
+  }, [activeSection, calendarFocusDate, calendarView, isAdmin, sessionPlayerId, loadCalendarEntries]);
 
   useEffect(() => {
     if (!sessionPlayerId || activeSection !== "presences") return;
@@ -1341,6 +1381,91 @@ export default function Home() {
   }
 
   // =========================================================
+  // CALENDAR ENTRIES
+  // =========================================================
+
+  function openCalendarEditor(date: string, entry?: CalendarEntry) {
+    setEditingCalendarEntryId(entry?.id || null);
+    setCalendarEntryDate(entry?.entry_date || date);
+    setCalendarEntryTitle(entry?.title || "");
+    setCalendarEntryTime(entry?.entry_time ? entry.entry_time.slice(0, 5) : "");
+    setCalendarEntryNote(entry?.note || "");
+    setCalendarEditorOpen(true);
+  }
+
+  function closeCalendarEditor() {
+    setCalendarEditorOpen(false);
+    setEditingCalendarEntryId(null);
+    setCalendarEntryDate(calendarFocusDate);
+    setCalendarEntryTitle("");
+    setCalendarEntryTime("");
+    setCalendarEntryNote("");
+  }
+
+  async function saveCalendarEntry() {
+    if (!calendarEntryTitle.trim()) {
+      alert("Scrivi il nome dell’impegno o della competizione.");
+      return;
+    }
+
+    if (!calendarEntryDate) {
+      alert("Seleziona il giorno dell’impegno.");
+      return;
+    }
+
+    setCalendarSaving(true);
+    const payload = {
+      entry_date: calendarEntryDate,
+      title: calendarEntryTitle.trim(),
+      entry_time: calendarEntryTime || null,
+      note: calendarEntryNote.trim() || null,
+    };
+
+    const query = editingCalendarEntryId
+      ? supabase.from("calendar_entries").update(payload).eq("id", editingCalendarEntryId)
+      : supabase.from("calendar_entries").insert(payload);
+
+    const { data, error } = await query
+      .select("id, entry_date, title, entry_time, note")
+      .single();
+
+    setCalendarSaving(false);
+
+    if (error || !data) {
+      alert("Errore salvataggio calendario:
+" + (error?.message || "Impegno non salvato."));
+      return;
+    }
+
+    setCalendarEntries((current) => {
+      const entry = data as CalendarEntry;
+      return editingCalendarEntryId
+        ? current.map((item) => item.id === entry.id ? entry : item)
+        : [...current, entry];
+    });
+    setCalendarFocusDate(data.entry_date);
+    closeCalendarEditor();
+  }
+
+  async function deleteCalendarEntry(entry: CalendarEntry) {
+    if (!window.confirm("Eliminare “" + entry.title + "” dal calendario?")) return;
+
+    const { error } = await supabase
+      .from("calendar_entries")
+      .delete()
+      .eq("id", entry.id);
+
+    if (error) {
+      alert("Errore eliminazione calendario:
+" + error.message);
+      return;
+    }
+
+    setCalendarEntries((current) => current.filter((item) => item.id !== entry.id));
+    closeCalendarEditor();
+  }
+
+  // =========================================================
   // COMPETITIONS
   // =========================================================
 
@@ -1387,7 +1512,7 @@ export default function Home() {
           ["dashboard", "presences", "events", "calendar", "votes", "mvp"].includes(item.id)
         )
       : menu.filter((item) =>
-          ["dashboard", "events", "calendar", "votes", "mvp", "stats"].includes(item.id)
+          ["dashboard", "events", "votes", "mvp", "stats"].includes(item.id)
         );
   const presencePlayers = isPlayer
     ? players.filter((player) => player.id === sessionPlayerId)
@@ -2327,8 +2452,85 @@ export default function Home() {
             <PageHeader
               eyebrow="CALCIO TOTALE"
               title="🗓️ Calendario"
-              description="Tutti gli impegni, le competizioni e gli orari della squadra."
+              description="Impegni, competizioni, orari e comunicazioni della squadra."
             />
+
+            {isAdmin && calendarEditorOpen && (
+              <section className="mb-7 rounded-3xl border border-emerald-500/35 bg-slate-900 p-5 shadow-xl sm:p-7">
+                <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-xl font-black">
+                      {editingCalendarEntryId ? "✏️ Modifica impegno" : "➕ Nuovo impegno"}
+                    </h3>
+                    <p className="mt-1 text-sm text-slate-400">Questo contenuto resta nel calendario del mese e non crea un Evento.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={closeCalendarEditor}
+                    disabled={calendarSaving}
+                    className="min-h-11 rounded-xl border border-slate-700 px-4 py-2 text-sm font-bold text-slate-300 hover:bg-slate-800"
+                  >
+                    Annulla
+                  </button>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-3">
+                  <Input
+                    label="Nome competizione o impegno"
+                    value={calendarEntryTitle}
+                    onChange={setCalendarEntryTitle}
+                    placeholder="Es. LND - Partita di campionato"
+                  />
+                  <Input
+                    label="Giorno"
+                    value={calendarEntryDate}
+                    onChange={setCalendarEntryDate}
+                    type="date"
+                  />
+                  <Input
+                    label="Orario"
+                    value={calendarEntryTime}
+                    onChange={setCalendarEntryTime}
+                    type="time"
+                  />
+                </div>
+
+                <div className="mt-4">
+                  <label className="mb-2 block text-sm font-semibold text-slate-200">Nota facoltativa</label>
+                  <textarea
+                    value={calendarEntryNote}
+                    onChange={(event) => setCalendarEntryNote(event.target.value)}
+                    maxLength={600}
+                    placeholder="Es. Ritrovo alle 21:45 - ricordarsi di confermare la presenza."
+                    className="min-h-24 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none placeholder:text-slate-600 focus:border-emerald-500"
+                  />
+                </div>
+
+                <div className="mt-5 flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    onClick={saveCalendarEntry}
+                    disabled={calendarSaving}
+                    className="min-h-11 rounded-xl bg-emerald-500 px-5 py-3 font-black text-slate-950 disabled:opacity-60"
+                  >
+                    {calendarSaving ? "Salvataggio..." : "💾 Salva nel calendario"}
+                  </button>
+                  {editingCalendarEntryId && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const entry = calendarEntries.find((item) => item.id === editingCalendarEntryId);
+                        if (entry) void deleteCalendarEntry(entry);
+                      }}
+                      disabled={calendarSaving}
+                      className="min-h-11 rounded-xl border border-red-500/40 px-5 py-3 font-bold text-red-300 hover:bg-red-500/10"
+                    >
+                      🗑️ Elimina
+                    </button>
+                  )}
+                </div>
+              </section>
+            )}
 
             <section className="rounded-3xl border border-slate-800 bg-slate-900 p-4 shadow-xl sm:p-6">
               <div className="mb-6 flex flex-col gap-4 border-b border-slate-800 pb-5 sm:flex-row sm:items-center sm:justify-between">
@@ -2337,7 +2539,8 @@ export default function Home() {
                     type="button"
                     onClick={() => {
                       const date = new Date(calendarFocusDate + "T12:00:00");
-                      date.setDate(date.getDate() + (calendarView === "week" ? -7 : -30));
+                      if (calendarView === "week") date.setDate(date.getDate() - 7);
+                      else date.setMonth(date.getMonth() - 1);
                       setCalendarFocusDate(toDateInputValue(date));
                     }}
                     className="min-h-11 rounded-xl border border-slate-700 px-4 py-2 font-bold text-slate-200 hover:bg-slate-800"
@@ -2356,7 +2559,8 @@ export default function Home() {
                     type="button"
                     onClick={() => {
                       const date = new Date(calendarFocusDate + "T12:00:00");
-                      date.setDate(date.getDate() + (calendarView === "week" ? 7 : 30));
+                      if (calendarView === "week") date.setDate(date.getDate() + 7);
+                      else date.setMonth(date.getMonth() + 1);
                       setCalendarFocusDate(toDateInputValue(date));
                     }}
                     className="min-h-11 rounded-xl border border-slate-700 px-4 py-2 font-bold text-slate-200 hover:bg-slate-800"
@@ -2385,29 +2589,29 @@ export default function Home() {
                   {isAdmin && (
                     <button
                       type="button"
-                      onClick={() => {
-                        setEditingEventId(null);
-                        setEventName("");
-                        setEventDate(calendarFocusDate);
-                        setEventTime("");
-                        setActiveSection("events");
-                      }}
+                      onClick={() => openCalendarEditor(calendarFocusDate)}
                       className="min-h-11 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-black text-slate-950 hover:bg-emerald-400"
                     >
-                      ➕ Nuovo impegno
+                      ➕ Scrivi nel calendario
                     </button>
                   )}
                 </div>
               </div>
 
-              {calendarView === "week" ? (
+              {calendarLoading ? (
+                <p className="py-10 text-center text-slate-400">Caricamento calendario...</p>
+              ) : calendarView === "week" ? (
                 <div className="grid gap-3 md:grid-cols-7">
                   {calendarWeekDates.map((date) => {
-                    const dayEvents = events.filter((event) => event.event_date === date);
+                    const dayEntries = calendarEntries.filter((entry) => entry.entry_date === date);
                     const dateObject = new Date(date + "T12:00:00");
                     const isToday = date === today;
                     return (
-                      <article key={date} className={"min-h-44 rounded-2xl border p-3 " + (isToday ? "border-emerald-500/70 bg-emerald-500/5" : "border-slate-800 bg-slate-950/50")}>
+                      <article
+                        key={date}
+                        onClick={() => isAdmin && openCalendarEditor(date)}
+                        className={"min-h-44 rounded-2xl border p-3 " + (isToday ? "border-emerald-500/70 bg-emerald-500/5" : "border-slate-800 bg-slate-950/50") + (isAdmin ? " cursor-pointer hover:border-emerald-500/50" : "")}
+                      >
                         <p className="text-xs font-bold uppercase tracking-wide text-slate-400">
                           {new Intl.DateTimeFormat("it-IT", { weekday: "short" }).format(dateObject)}
                         </p>
@@ -2415,23 +2619,23 @@ export default function Home() {
                           {dateObject.getDate()}
                         </p>
                         <div className="space-y-2">
-                          {dayEvents.map((event) => (
+                          {dayEntries.map((entry) => (
                             <button
                               type="button"
-                              key={event.id}
-                              onClick={() => {
-                                if (!isAdmin) return;
-                                openEditEvent(event);
-                                setActiveSection("events");
+                              key={entry.id}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                if (isAdmin) openCalendarEditor(date, entry);
                               }}
-                              className={"w-full rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-2 text-left text-xs transition " + (isAdmin ? "hover:bg-emerald-500/20" : "cursor-default")}
-                              title={isAdmin ? "Modifica impegno" : event.name}
+                              className={"w-full rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-2 text-left text-xs " + (isAdmin ? "hover:bg-emerald-500/20" : "cursor-default")}
+                              title={entry.note || entry.title}
                             >
-                              <span className="block font-black text-emerald-300">{event.event_time ? event.event_time.slice(0, 5) : "Orario da definire"}</span>
-                              <span className="mt-0.5 block font-semibold leading-snug text-slate-100">{event.name}</span>
+                              <span className="block font-black text-emerald-300">{entry.entry_time ? entry.entry_time.slice(0, 5) : "Orario da definire"}</span>
+                              <span className="mt-0.5 block font-semibold leading-snug text-slate-100">{entry.title}</span>
+                              {entry.note && <span className="mt-1 block whitespace-pre-line text-slate-400">{entry.note}</span>}
                             </button>
                           ))}
-                          {dayEvents.length === 0 && <p className="text-xs text-slate-600">Nessun impegno</p>}
+                          {dayEntries.length === 0 && <p className="text-xs text-slate-600">Nessun impegno</p>}
                         </div>
                       </article>
                     );
@@ -2446,27 +2650,30 @@ export default function Home() {
                     {calendarMonthDates.map((date) => {
                       const dateObject = new Date(date + "T12:00:00");
                       const inCurrentMonth = dateObject.getMonth() === new Date(calendarFocusDate + "T12:00:00").getMonth();
-                      const dayEvents = events.filter((event) => event.event_date === date);
+                      const dayEntries = calendarEntries.filter((entry) => entry.entry_date === date);
                       return (
-                        <article key={date} className={"min-h-24 rounded-xl border p-2 sm:min-h-32 " + (inCurrentMonth ? "border-slate-800 bg-slate-950/50" : "border-slate-900 bg-slate-950/20 opacity-50")}>
+                        <article
+                          key={date}
+                          onClick={() => isAdmin && openCalendarEditor(date)}
+                          className={"min-h-24 rounded-xl border p-2 sm:min-h-32 " + (inCurrentMonth ? "border-slate-800 bg-slate-950/50" : "border-slate-900 bg-slate-950/20 opacity-50") + (isAdmin ? " cursor-pointer hover:border-emerald-500/50" : "")}
+                        >
                           <p className={"mb-1 text-xs font-black sm:text-sm " + (date === today ? "text-emerald-400" : "text-slate-300")}>{dateObject.getDate()}</p>
                           <div className="space-y-1">
-                            {dayEvents.slice(0, 2).map((event) => (
+                            {dayEntries.slice(0, 2).map((entry) => (
                               <button
                                 type="button"
-                                key={event.id}
-                                onClick={() => {
-                                  if (!isAdmin) return;
-                                  openEditEvent(event);
-                                  setActiveSection("events");
+                                key={entry.id}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  if (isAdmin) openCalendarEditor(date, entry);
                                 }}
                                 className={"block w-full truncate rounded-md bg-emerald-500/15 px-1.5 py-1 text-left text-[10px] font-bold text-emerald-200 " + (isAdmin ? "hover:bg-emerald-500/25" : "cursor-default")}
-                                title={(event.event_time ? event.event_time.slice(0, 5) + " · " : "") + event.name}
+                                title={(entry.entry_time ? entry.entry_time.slice(0, 5) + " · " : "") + entry.title + (entry.note ? " - " + entry.note : "")}
                               >
-                                {event.event_time ? event.event_time.slice(0, 5) + " · " : ""}{event.name}
+                                {entry.entry_time ? entry.entry_time.slice(0, 5) + " · " : ""}{entry.title}
                               </button>
                             ))}
-                            {dayEvents.length > 2 && <p className="px-1 text-[10px] font-bold text-slate-400">+{dayEvents.length - 2} altri</p>}
+                            {dayEntries.length > 2 && <p className="px-1 text-[10px] font-bold text-slate-400">+{dayEntries.length - 2} altri</p>}
                           </div>
                         </article>
                       );
@@ -2476,7 +2683,7 @@ export default function Home() {
               )}
 
               <p className="mt-5 text-sm text-slate-500">
-                {isAdmin ? "Tocca un impegno per modificarlo oppure usa “Nuovo impegno” per aggiungerne uno." : "Il calendario è in sola lettura: gli impegni sono aggiornati dagli Admin."}
+                {isAdmin ? "Clicca un giorno vuoto per scrivere un impegno; clicca un impegno per modificarlo." : "Il calendario è in sola lettura: gli impegni sono aggiornati dagli Admin."}
               </p>
             </section>
           </div>
