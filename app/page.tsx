@@ -1918,6 +1918,121 @@ export default function Home() {
               description="Gestisci la disponibilità dei giocatori per ogni giornata."
             />
 
+            {sessionPlayerId && (
+              <section className="mb-8 rounded-3xl border border-emerald-400/25 bg-slate-900 p-5 sm:p-7">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="text-sm font-black uppercase tracking-[0.2em] text-emerald-300">
+                      📅 La mia presenza settimanale
+                    </p>
+                    <h3 className="mt-1 text-2xl font-black">Scegli la tua disponibilità</h3>
+                    <p className="mt-2 text-sm text-slate-400">
+                      Imposta Presente o Assente da lunedì a domenica. Il ruolo è richiesto solo nei giorni presenti.
+                    </p>
+                  </div>
+                  <div className="w-full sm:w-56">
+                    <label className="mb-2 block text-sm font-bold text-slate-300">
+                      Scegli una data della settimana
+                    </label>
+                    <input
+                      type="date"
+                      value={weeklyAvailabilityWeek}
+                      onChange={(event) => setWeeklyAvailabilityWeek(event.target.value || today)}
+                      className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 font-semibold text-slate-900 outline-none [color-scheme:light] focus:border-emerald-500"
+                    />
+                  </div>
+                </div>
+
+                {weeklyAvailabilityLoading ? (
+                  <p className="mt-6 rounded-2xl bg-slate-950 p-4 text-sm text-slate-400">
+                    Caricamento settimana…
+                  </p>
+                ) : (
+                  <>
+                    <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                      {weeklyAvailabilityDates.map((date) => {
+                        const draft = weeklyAvailabilityDrafts[date] || { status: "", event_role: "" };
+                        const calendarDate = new Date(`${date}T12:00:00`);
+                        const weekday = new Intl.DateTimeFormat("it-IT", { weekday: "long" }).format(calendarDate);
+                        const dateLabel = new Intl.DateTimeFormat("it-IT", { day: "2-digit", month: "short" }).format(calendarDate);
+
+                        return (
+                          <div key={date} className="rounded-2xl border border-slate-700 bg-slate-950 p-4">
+                            <p className="capitalize font-black">{weekday}</p>
+                            <p className="mt-1 text-xs font-semibold text-slate-500">{dateLabel}</p>
+
+                            <div className="mt-4 grid grid-cols-2 gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setWeeklyAvailabilityDrafts((current) => ({
+                                  ...current,
+                                  [date]: {
+                                    status: "Presente",
+                                    event_role: current[date]?.event_role || "",
+                                  },
+                                }))}
+                                className={`min-h-11 rounded-xl px-3 py-2 text-sm font-black transition ${draft.status === "Presente" ? "bg-emerald-500 text-slate-950" : "bg-slate-800 text-emerald-300 hover:bg-emerald-500/15"}`}
+                              >
+                                🟢 Presente
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setWeeklyAvailabilityDrafts((current) => ({
+                                  ...current,
+                                  [date]: { status: "Assente", event_role: "" },
+                                }))}
+                                className={`min-h-11 rounded-xl px-3 py-2 text-sm font-black transition ${draft.status === "Assente" ? "bg-red-500 text-white" : "bg-slate-800 text-red-300 hover:bg-red-500/15"}`}
+                              >
+                                🔴 Assente
+                              </button>
+                            </div>
+
+                            {draft.status === "Presente" && (
+                              <div className="mt-3">
+                                <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-emerald-300">
+                                  Ruolo del giorno
+                                </label>
+                                <select
+                                  value={draft.event_role}
+                                  onChange={(event) => setWeeklyAvailabilityDrafts((current) => ({
+                                    ...current,
+                                    [date]: {
+                                      status: "Presente",
+                                      event_role: event.target.value as PresenceRole | "",
+                                    },
+                                  }))}
+                                  className="min-h-11 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-emerald-500"
+                                >
+                                  <option value="">Scegli ruolo</option>
+                                  {presenceRoles.map((role) => (
+                                    <option key={role} value={role}>{role}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="text-sm text-slate-500">
+                        {weeklyAvailability.length} giorni già salvati per questa settimana.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={saveWeeklyAvailability}
+                        disabled={weeklyAvailabilitySaving}
+                        className="min-h-12 rounded-xl bg-emerald-500 px-6 py-3 font-black text-slate-950 hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {weeklyAvailabilitySaving ? "⏳ Salvataggio…" : "💾 Salva settimana"}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </section>
+            )}
+
             <div className="mb-6 grid gap-5 md:grid-cols-2">
 
               <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
