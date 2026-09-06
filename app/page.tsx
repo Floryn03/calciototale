@@ -108,6 +108,7 @@ const menu = [
   { id: "players", label: "Giocatori", icon: "👥" },
   { id: "presences", label: "Presenze", icon: "✅" },
   { id: "events", label: "Eventi", icon: "📅" },
+  { id: "calendar", label: "Calendario", icon: "🗓️" },
   { id: "competitions", label: "Competizioni", icon: "🏆" },
   { id: "votes", label: "Votazioni", icon: "⭐" },
   { id: "mvp", label: "MVP", icon: "👑" },
@@ -217,6 +218,8 @@ export default function Home() {
 
   const [events, setEvents] = useState<EventItem[]>([]);
   const [selectedEventId, setSelectedEventId] = useState("");
+  const [calendarView, setCalendarView] = useState<"week" | "month">("week");
+  const [calendarFocusDate, setCalendarFocusDate] = useState(today);
   const [weeklyAvailabilityWeek, setWeeklyAvailabilityWeek] = useState(today);
   const [weeklyAvailability, setWeeklyAvailability] = useState<WeeklyAvailability[]>([]);
   const [weeklyAvailabilityDrafts, setWeeklyAvailabilityDrafts] = useState<Record<string, { status: WeeklyAvailabilityStatus; event_role: PresenceRole | "" }>>({});
@@ -247,6 +250,26 @@ export default function Home() {
   const weeklyAvailabilityDates = useMemo(
     () => weekDatesFromStart(weeklyAvailabilityStart),
     [weeklyAvailabilityStart]
+  );
+  const calendarWeekDates = useMemo(
+    () => weekDatesFromStart(weekStartFromDate(calendarFocusDate)),
+    [calendarFocusDate]
+  );
+  const calendarMonthDates = useMemo(() => {
+    const focus = new Date(calendarFocusDate + "T12:00:00");
+    const firstDay = new Date(focus.getFullYear(), focus.getMonth(), 1, 12);
+    const startOffset = (firstDay.getDay() + 6) % 7;
+    const start = new Date(firstDay);
+    start.setDate(firstDay.getDate() - startOffset);
+    return Array.from({ length: 42 }, (_, index) => {
+      const date = new Date(start);
+      date.setDate(start.getDate() + index);
+      return toDateInputValue(date);
+    });
+  }, [calendarFocusDate]);
+  const calendarMonthLabel = useMemo(
+    () => new Intl.DateTimeFormat("it-IT", { month: "long", year: "numeric" }).format(new Date(calendarFocusDate + "T12:00:00")),
+    [calendarFocusDate]
   );
 
   // =========================================================
@@ -1361,10 +1384,10 @@ export default function Home() {
     ? menu
     : isPlayer
       ? menu.filter((item) =>
-          ["dashboard", "presences", "events", "votes", "mvp"].includes(item.id)
+          ["dashboard", "presences", "events", "calendar", "votes", "mvp"].includes(item.id)
         )
       : menu.filter((item) =>
-          ["dashboard", "events", "votes", "mvp", "stats"].includes(item.id)
+          ["dashboard", "events", "calendar", "votes", "mvp", "stats"].includes(item.id)
         );
   const presencePlayers = isPlayer
     ? players.filter((player) => player.id === sessionPlayerId)
@@ -2292,6 +2315,170 @@ export default function Home() {
               </div>
             )}
 
+          </div>
+        )}
+
+        {/* =====================================================
+            CALENDAR
+        ===================================================== */}
+
+        {activeSection === "calendar" && (
+          <div>
+            <PageHeader
+              eyebrow="CALCIO TOTALE"
+              title="🗓️ Calendario"
+              description="Tutti gli impegni, le competizioni e gli orari della squadra."
+            />
+
+            <section className="rounded-3xl border border-slate-800 bg-slate-900 p-4 shadow-xl sm:p-6">
+              <div className="mb-6 flex flex-col gap-4 border-b border-slate-800 pb-5 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const date = new Date(calendarFocusDate + "T12:00:00");
+                      date.setDate(date.getDate() + (calendarView === "week" ? -7 : -30));
+                      setCalendarFocusDate(toDateInputValue(date));
+                    }}
+                    className="min-h-11 rounded-xl border border-slate-700 px-4 py-2 font-bold text-slate-200 hover:bg-slate-800"
+                    aria-label="Periodo precedente"
+                  >
+                    ←
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCalendarFocusDate(today)}
+                    className="min-h-11 rounded-xl border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-300 hover:bg-slate-800"
+                  >
+                    Oggi
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const date = new Date(calendarFocusDate + "T12:00:00");
+                      date.setDate(date.getDate() + (calendarView === "week" ? 7 : 30));
+                      setCalendarFocusDate(toDateInputValue(date));
+                    }}
+                    className="min-h-11 rounded-xl border border-slate-700 px-4 py-2 font-bold text-slate-200 hover:bg-slate-800"
+                    aria-label="Periodo successivo"
+                  >
+                    →
+                  </button>
+                  <h3 className="ml-1 text-lg font-black capitalize text-white sm:text-xl">{calendarMonthLabel}</h3>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCalendarView("week")}
+                    className={"min-h-11 rounded-xl px-4 py-2 text-sm font-bold " + (calendarView === "week" ? "bg-emerald-500 text-slate-950" : "border border-slate-700 text-slate-300 hover:bg-slate-800")}
+                  >
+                    Settimana
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCalendarView("month")}
+                    className={"min-h-11 rounded-xl px-4 py-2 text-sm font-bold " + (calendarView === "month" ? "bg-emerald-500 text-slate-950" : "border border-slate-700 text-slate-300 hover:bg-slate-800")}
+                  >
+                    Mese
+                  </button>
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingEventId(null);
+                        setEventName("");
+                        setEventDate(calendarFocusDate);
+                        setEventTime("");
+                        setActiveSection("events");
+                      }}
+                      className="min-h-11 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-black text-slate-950 hover:bg-emerald-400"
+                    >
+                      ➕ Nuovo impegno
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {calendarView === "week" ? (
+                <div className="grid gap-3 md:grid-cols-7">
+                  {calendarWeekDates.map((date) => {
+                    const dayEvents = events.filter((event) => event.event_date === date);
+                    const dateObject = new Date(date + "T12:00:00");
+                    const isToday = date === today;
+                    return (
+                      <article key={date} className={"min-h-44 rounded-2xl border p-3 " + (isToday ? "border-emerald-500/70 bg-emerald-500/5" : "border-slate-800 bg-slate-950/50")}>
+                        <p className="text-xs font-bold uppercase tracking-wide text-slate-400">
+                          {new Intl.DateTimeFormat("it-IT", { weekday: "short" }).format(dateObject)}
+                        </p>
+                        <p className={"mb-3 text-xl font-black " + (isToday ? "text-emerald-400" : "text-white")}>
+                          {dateObject.getDate()}
+                        </p>
+                        <div className="space-y-2">
+                          {dayEvents.map((event) => (
+                            <button
+                              type="button"
+                              key={event.id}
+                              onClick={() => {
+                                if (!isAdmin) return;
+                                openEditEvent(event);
+                                setActiveSection("events");
+                              }}
+                              className={"w-full rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-2 text-left text-xs transition " + (isAdmin ? "hover:bg-emerald-500/20" : "cursor-default")}
+                              title={isAdmin ? "Modifica impegno" : event.name}
+                            >
+                              <span className="block font-black text-emerald-300">{event.event_time ? event.event_time.slice(0, 5) : "Orario da definire"}</span>
+                              <span className="mt-0.5 block font-semibold leading-snug text-slate-100">{event.name}</span>
+                            </button>
+                          ))}
+                          {dayEvents.length === 0 && <p className="text-xs text-slate-600">Nessun impegno</p>}
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              ) : (
+                <>
+                  <div className="mb-2 grid grid-cols-7 gap-2 text-center text-xs font-bold uppercase tracking-wide text-slate-500">
+                    {["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"].map((day) => <span key={day}>{day}</span>)}
+                  </div>
+                  <div className="grid grid-cols-7 gap-2">
+                    {calendarMonthDates.map((date) => {
+                      const dateObject = new Date(date + "T12:00:00");
+                      const inCurrentMonth = dateObject.getMonth() === new Date(calendarFocusDate + "T12:00:00").getMonth();
+                      const dayEvents = events.filter((event) => event.event_date === date);
+                      return (
+                        <article key={date} className={"min-h-24 rounded-xl border p-2 sm:min-h-32 " + (inCurrentMonth ? "border-slate-800 bg-slate-950/50" : "border-slate-900 bg-slate-950/20 opacity-50")}>
+                          <p className={"mb-1 text-xs font-black sm:text-sm " + (date === today ? "text-emerald-400" : "text-slate-300")}>{dateObject.getDate()}</p>
+                          <div className="space-y-1">
+                            {dayEvents.slice(0, 2).map((event) => (
+                              <button
+                                type="button"
+                                key={event.id}
+                                onClick={() => {
+                                  if (!isAdmin) return;
+                                  openEditEvent(event);
+                                  setActiveSection("events");
+                                }}
+                                className={"block w-full truncate rounded-md bg-emerald-500/15 px-1.5 py-1 text-left text-[10px] font-bold text-emerald-200 " + (isAdmin ? "hover:bg-emerald-500/25" : "cursor-default")}
+                                title={(event.event_time ? event.event_time.slice(0, 5) + " · " : "") + event.name}
+                              >
+                                {event.event_time ? event.event_time.slice(0, 5) + " · " : ""}{event.name}
+                              </button>
+                            ))}
+                            {dayEvents.length > 2 && <p className="px-1 text-[10px] font-bold text-slate-400">+{dayEvents.length - 2} altri</p>}
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+
+              <p className="mt-5 text-sm text-slate-500">
+                {isAdmin ? "Tocca un impegno per modificarlo oppure usa “Nuovo impegno” per aggiungerne uno." : "Il calendario è in sola lettura: gli impegni sono aggiornati dagli Admin."}
+              </p>
+            </section>
           </div>
         )}
 
