@@ -1432,8 +1432,7 @@ export default function Home() {
     setCalendarSaving(false);
 
     if (error || !data) {
-      alert("Errore salvataggio calendario:
-" + (error?.message || "Impegno non salvato."));
+      alert("Errore salvataggio calendario:\n" + (error?.message || "Impegno non salvato."));
       return;
     }
 
@@ -1456,8 +1455,7 @@ export default function Home() {
       .eq("id", entry.id);
 
     if (error) {
-      alert("Errore eliminazione calendario:
-" + error.message);
+      alert("Errore eliminazione calendario:\n" + error.message);
       return;
     }
 
