@@ -932,11 +932,11 @@ export default function Home() {
     setPresenceNotePlayerId(player.id);
   }
 
-  async function savePresenceNote(player: Player) {
+  async function savePresenceNote(player: Player, noteOverride?: string) {
     const presence = getPresence(player.id);
     if (!presence) return;
 
-    const note = presenceNoteDraft.trim().slice(0, 300) || null;
+    const note = (noteOverride ?? presenceNoteDraft).trim().slice(0, 300) || null;
     const { data, error } = await supabase
       .from("presences")
       .update({ note })
@@ -1968,7 +1968,7 @@ export default function Home() {
                                                 type="button"
                                                 onClick={() => {
                                                   setPresenceNoteDraft("");
-                                                  void savePresenceNote(player);
+                                                  void savePresenceNote(player, "");
                                                 }}
                                                 className="min-h-10 rounded-xl border border-red-400/30 px-4 py-2 text-sm font-bold text-red-300 hover:bg-red-400/10"
                                               >
