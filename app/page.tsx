@@ -35,6 +35,16 @@ type EventItem = {
   event_time: string | null;
 };
 
+type WeeklyAvailabilityStatus = "" | "Presente" | "Assente";
+
+type WeeklyAvailability = {
+  id: string;
+  player_id: string;
+  availability_date: string;
+  status: Exclude<WeeklyAvailabilityStatus, "">;
+  event_role: PresenceRole | null;
+};
+
 type MatchPlayerStat = {
   match_id: string;
   player_id: string;
@@ -106,6 +116,29 @@ const menu = [
 ];
 
 const today = new Date().toISOString().split("T")[0];
+
+function toDateInputValue(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function weekStartFromDate(value: string) {
+  const date = new Date(`${value}T12:00:00`);
+  const day = date.getDay() || 7;
+  date.setDate(date.getDate() - day + 1);
+  return toDateInputValue(date);
+}
+
+function weekDatesFromStart(value: string) {
+  const start = new Date(`${value}T12:00:00`);
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(start);
+    date.setDate(start.getDate() + index);
+    return toDateInputValue(date);
+  });
+}
 
 function normalizeLoginId(value: string) {
   return value.trim().toUpperCase();
@@ -184,6 +217,11 @@ export default function Home() {
 
   const [events, setEvents] = useState<EventItem[]>([]);
   const [selectedEventId, setSelectedEventId] = useState("");
+  const [weeklyAvailabilityWeek, setWeeklyAvailabilityWeek] = useState(today);
+  const [weeklyAvailability, setWeeklyAvailability] = useState<WeeklyAvailability[]>([]);
+  const [weeklyAvailabilityDrafts, setWeeklyAvailabilityDrafts] = useState<Record<string, { status: WeeklyAvailabilityStatus; event_role: PresenceRole | "" }>>({});
+  const [weeklyAvailabilityLoading, setWeeklyAvailabilityLoading] = useState(false);
+  const [weeklyAvailabilitySaving, setWeeklyAvailabilitySaving] = useState(false);
   const [presenceRolePickerPlayerId, setPresenceRolePickerPlayerId] = useState<string | null>(null);
   const [presenceRoleDrafts, setPresenceRoleDrafts] = useState<Record<string, PresenceRole | "">>({});
   const [presenceNotePlayerId, setPresenceNotePlayerId] = useState<string | null>(null);
@@ -201,6 +239,15 @@ export default function Home() {
 
   const [competitionName, setCompetitionName] = useState("");
   const [competitionType, setCompetitionType] = useState("Torneo");
+
+  const weeklyAvailabilityStart = useMemo(
+    () => weekStartFromDate(weeklyAvailabilityWeek),
+    [weeklyAvailabilityWeek]
+  );
+  const weeklyAvailabilityDates = useMemo(
+    () => weekDatesFromStart(weeklyAvailabilityStart),
+    [weeklyAvailabilityStart]
+  );
 
   // =========================================================
   // ADMIN AUTHENTICATION
@@ -664,6 +711,46 @@ export default function Home() {
   }, [activeSection, loadMatchPlayerStats]);
 
   useEffect(() => {
+    if (!sessionPlayerId || activeSection !== "presences") return;
+
+    let cancelled = false;
+    void (async () => {
+      setWeeklyAvailabilityLoading(true);
+      const { data, error } = await supabase
+        .from("weekly_player_availability")
+        .select("id, player_id, availability_date, status, event_role")
+        .eq("player_id", sessionPlayerId)
+        .gte("availability_date", weeklyAvailabilityStart)
+        .lte("availability_date", weeklyAvailabilityDates[6]);
+
+      if (cancelled) return;
+      if (error) {
+        console.error("Errore caricamento presenza settimanale:", error);
+        setWeeklyAvailability([]);
+        setWeeklyAvailabilityLoading(false);
+        return;
+      }
+
+      const values = (data || []) as WeeklyAvailability[];
+      setWeeklyAvailability(values);
+      setWeeklyAvailabilityDrafts(Object.fromEntries(
+        weeklyAvailabilityDates.map((date) => {
+          const existing = values.find((item) => item.availability_date === date);
+          return [date, {
+            status: existing?.status || "",
+            event_role: existing?.event_role || "",
+          }];
+        })
+      ));
+      setWeeklyAvailabilityLoading(false);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeSection, sessionPlayerId, weeklyAvailabilityDates, weeklyAvailabilityStart]);
+
+  useEffect(() => {
     const presenceLoad = window.setTimeout(() => {
       void loadPresences();
     }, 0);
@@ -956,6 +1043,53 @@ export default function Home() {
     }
     setPresenceNotePlayerId(null);
     setPresenceNoteDraft("");
+  }
+
+  async function saveWeeklyAvailability() {
+    if (!sessionPlayerId) return;
+
+    const incompleteDate = weeklyAvailabilityDates.find(
+      (date) => !weeklyAvailabilityDrafts[date]?.status
+    );
+    if (incompleteDate) {
+      alert("Scegli Presente o Assente per tutti i giorni della settimana.");
+      return;
+    }
+
+    const missingRoleDate = weeklyAvailabilityDates.find((date) => {
+      const draft = weeklyAvailabilityDrafts[date];
+      return draft?.status === "Presente" && !draft.event_role;
+    });
+    if (missingRoleDate) {
+      alert("Scegli il ruolo per ogni giorno segnato come Presente.");
+      return;
+    }
+
+    setWeeklyAvailabilitySaving(true);
+    const rows = weeklyAvailabilityDates.map((date) => {
+      const draft = weeklyAvailabilityDrafts[date];
+      return {
+        player_id: sessionPlayerId,
+        availability_date: date,
+        status: draft.status as Exclude<WeeklyAvailabilityStatus, "">,
+        event_role: draft.status === "Presente" ? draft.event_role : null,
+        updated_at: new Date().toISOString(),
+      };
+    });
+
+    const { data, error } = await supabase
+      .from("weekly_player_availability")
+      .upsert(rows, { onConflict: "player_id,availability_date" })
+      .select("id, player_id, availability_date, status, event_role");
+
+    setWeeklyAvailabilitySaving(false);
+    if (error) {
+      alert(`Errore presenza settimanale:\n${error.message}`);
+      return;
+    }
+
+    setWeeklyAvailability((data || []) as WeeklyAvailability[]);
+    alert("Presenza settimanale salvata.");
   }
 
   async function savePresence(
