@@ -186,6 +186,8 @@ export default function Home() {
   const [selectedEventId, setSelectedEventId] = useState("");
   const [presenceRolePickerPlayerId, setPresenceRolePickerPlayerId] = useState<string | null>(null);
   const [presenceRoleDrafts, setPresenceRoleDrafts] = useState<Record<string, PresenceRole | "">>({});
+  const [presenceNotePlayerId, setPresenceNotePlayerId] = useState<string | null>(null);
+  const [presenceNoteDraft, setPresenceNoteDraft] = useState("");
   const [presenceRoleFilter, setPresenceRoleFilter] = useState<PresenceRole | "">("");
 
   const [competitions, setCompetitions] = useState<
@@ -918,6 +920,42 @@ export default function Home() {
       [player.id]: existing?.event_role || "",
     }));
     setPresenceRolePickerPlayerId(player.id);
+  }
+
+  function openPresenceNoteEditor(player: Player) {
+    const presence = getPresence(player.id);
+    if (!presence) {
+      alert("Registra prima la presenza del giocatore, poi puoi aggiungere una nota.");
+      return;
+    }
+    setPresenceNoteDraft(presence.note || "");
+    setPresenceNotePlayerId(player.id);
+  }
+
+  async function savePresenceNote(player: Player) {
+    const presence = getPresence(player.id);
+    if (!presence) return;
+
+    const note = presenceNoteDraft.trim().slice(0, 300) || null;
+    const { data, error } = await supabase
+      .from("presences")
+      .update({ note })
+      .eq("id", presence.id)
+      .select()
+      .single();
+
+    if (error) {
+      alert(`Errore nota:\n${error.message}`);
+      return;
+    }
+
+    if (data) {
+      setPresences((current) =>
+        current.map((item) => item.id === data.id ? (data as Presence) : item)
+      );
+    }
+    setPresenceNotePlayerId(null);
+    setPresenceNoteDraft("");
   }
 
   async function savePresence(
@@ -1863,6 +1901,11 @@ export default function Home() {
                                   <td className="px-5 py-4">
                                     <div className="font-bold">{player.name}</div>
                                     <div className="text-xs text-slate-500">{player.psn_id}</div>
+                                    {presence?.note && (
+                                      <div className="mt-1 text-xs font-medium text-amber-300">
+                                        📝 {presence.note}
+                                      </div>
+                                    )}
                                   </td>
                                   <td className="px-5 py-4">{player.position}</td>
                                   <td className="px-5 py-4">
@@ -1887,7 +1930,64 @@ export default function Home() {
                                           active={presence?.status === "Assente"}
                                           onClick={() => savePresence(player, "Assente")}
                                         />
+                                        {isAdmin && (
+                                          <button
+                                            type="button"
+                                            onClick={() => openPresenceNoteEditor(player)}
+                                            className="min-h-11 min-w-11 touch-manipulation rounded-lg border border-amber-400/30 bg-slate-800 px-3 py-2 text-sm font-bold text-amber-300 hover:bg-amber-400/10"
+                                            title="Aggiungi o modifica nota"
+                                          >
+                                            📝
+                                          </button>
+                                        )}
                                       </div>
+
+                                      {isAdmin && presenceNotePlayerId === player.id && (
+                                        <div className="mt-3 w-full min-w-64">
+                                          <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-amber-300">
+                                            Nota Admin per questa presenza
+                                          </label>
+                                          <textarea
+                                            value={presenceNoteDraft}
+                                            onChange={(event) => setPresenceNoteDraft(event.target.value)}
+                                            maxLength={300}
+                                            rows={2}
+                                            placeholder="Es. Arriva tardi di 15 minuti"
+                                            className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-amber-400"
+                                          />
+                                          <div className="mt-2 flex flex-wrap gap-2">
+                                            <button
+                                              type="button"
+                                              onClick={() => savePresenceNote(player)}
+                                              className="min-h-10 rounded-xl bg-amber-400 px-4 py-2 text-sm font-bold text-slate-950 hover:bg-amber-300"
+                                            >
+                                              Salva nota
+                                            </button>
+                                            {presence?.note && (
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  setPresenceNoteDraft("");
+                                                  void savePresenceNote(player);
+                                                }}
+                                                className="min-h-10 rounded-xl border border-red-400/30 px-4 py-2 text-sm font-bold text-red-300 hover:bg-red-400/10"
+                                              >
+                                                Cancella nota
+                                              </button>
+                                            )}
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setPresenceNotePlayerId(null);
+                                                setPresenceNoteDraft("");
+                                              }}
+                                              className="min-h-10 rounded-xl border border-slate-700 px-4 py-2 text-sm font-bold text-slate-300 hover:bg-slate-800"
+                                            >
+                                              Annulla
+                                            </button>
+                                          </div>
+                                        </div>
+                                      )}
 
                                       {presenceRolePickerPlayerId === player.id && (
                                         <div className="mt-3 w-full min-w-56">
