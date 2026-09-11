@@ -140,6 +140,19 @@ const positions = [
 // Ruoli validi per la singola presenza, indipendenti dal ruolo fisso del giocatore.
 const presenceRoles: PresenceRole[] = ["POR", "DCD", "DCC", "DCS", "ES", "ED", "CCS", "CDC", "CCD", "ATT"];
 
+const statsRoleGroups = [
+  { id: "goalkeepers", label: "🧤 Portieri", matches: (position: string) => position === "POR" },
+  { id: "defenders", label: "🛡️ Difensori", matches: (position: string) => ["DCD", "DCC", "DCS"].includes(position) },
+  { id: "midfielders", label: "⚙️ Centrocampisti", matches: (position: string) => ["CCS", "CDC", "CCD"].includes(position) },
+  { id: "wingers", label: "🏃 Esterni", matches: (position: string) => ["ES", "ED"].includes(position) },
+  { id: "attackers", label: "⚽ Attaccanti", matches: (position: string) => position.startsWith("ATT") },
+  { id: "others", label: "Altri ruoli", matches: () => true },
+];
+
+function getStatsRoleGroup(position: string) {
+  return statsRoleGroups.find((group) => group.matches(position))?.id || "others";
+}
+
 const menu = [
   { id: "dashboard", label: "Dashboard", icon: "🏠" },
   { id: "players", label: "Giocatori", icon: "👥" },
@@ -1153,16 +1166,10 @@ export default function Home() {
     const mvps = matchReports.filter((report) => report.match_mvp_player_id === player.id).length;
     return { player, presencesCount, averageRating, goals, assists, yellow, red, mvps };
   }).sort((a, b) => {
-    const roleOrder = (position: string) => {
-      if (position === "POR") return 0;
-      if (["DCD", "DCC", "DCS"].includes(position)) return 1;
-      if (["ES", "ED"].includes(position)) return 2;
-      if (["CCS", "CDC", "CCD"].includes(position)) return 3;
-      if (position.startsWith("ATT")) return 4;
-      return 5;
-    };
+    const roleOrder = statsRoleGroups.findIndex((group) => group.id === getStatsRoleGroup(a.player.position))
+      - statsRoleGroups.findIndex((group) => group.id === getStatsRoleGroup(b.player.position));
 
-    return roleOrder(a.player.position) - roleOrder(b.player.position)
+    return roleOrder
       || a.player.name.localeCompare(b.player.name, "it");
   }), [players, matchRatings, matchPlayerStats, historyPresences, matchDiscipline, matchReports]);
 
@@ -3366,16 +3373,26 @@ export default function Home() {
                   <thead className="border-b border-slate-800 text-slate-400">
                     <tr><th className="px-3 py-3">Giocatore</th><th className="px-3 py-3">Presenze</th><th className="px-3 py-3">Media</th><th className="px-3 py-3">Gol</th><th className="px-3 py-3">Assist</th><th className="px-3 py-3">Gialli</th><th className="px-3 py-3">Rossi</th><th className="px-3 py-3">MVP</th></tr>
                   </thead>
-                  <tbody>
-                    {individualHistoryStats.map((item) => (
-                      <tr key={item.player.id} className="border-b border-slate-900 last:border-0">
-                        <td className="px-3 py-3 font-bold">{item.player.name}</td>
-                        <td className="px-3 py-3">{item.presencesCount}</td>
-                        <td className="px-3 py-3 font-mono font-black text-emerald-300">{item.averageRating ? item.averageRating.toFixed(2) : "—"}</td>
-                        <td className="px-3 py-3">{item.goals}</td><td className="px-3 py-3">{item.assists}</td><td className="px-3 py-3">{item.yellow}</td><td className="px-3 py-3">{item.red}</td><td className="px-3 py-3">{item.mvps ? "🏆 " + item.mvps : "—"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
+                  {statsRoleGroups.map((group) => {
+                    const groupPlayers = individualHistoryStats.filter((item) => getStatsRoleGroup(item.player.position) === group.id);
+                    if (groupPlayers.length === 0) return null;
+
+                    return (
+                      <tbody key={group.id}>
+                        <tr className="border-y border-emerald-500/20 bg-emerald-500/10">
+                          <td colSpan={8} className="px-3 py-3 font-black text-emerald-300">{group.label}</td>
+                        </tr>
+                        {groupPlayers.map((item) => (
+                          <tr key={item.player.id} className="border-b border-slate-900 last:border-0">
+                            <td className="px-3 py-3 font-bold">{item.player.name}</td>
+                            <td className="px-3 py-3">{item.presencesCount}</td>
+                            <td className="px-3 py-3 font-mono font-black text-emerald-300">{item.averageRating ? item.averageRating.toFixed(2) : "—"}</td>
+                            <td className="px-3 py-3">{item.goals}</td><td className="px-3 py-3">{item.assists}</td><td className="px-3 py-3">{item.yellow}</td><td className="px-3 py-3">{item.red}</td><td className="px-3 py-3">{item.mvps ? "🏆 " + item.mvps : "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    );
+                  })}
                 </table>
               </div>
             </section>
