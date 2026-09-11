@@ -60,6 +60,35 @@ type MatchPlayerStat = {
   assists: number;
 };
 
+type MatchReport = {
+  match_id: string;
+  opponent: string;
+  team_score: number;
+  opponent_score: number;
+  note: string | null;
+  match_mvp_player_id: string | null;
+};
+
+type MatchDiscipline = {
+  match_id: string;
+  player_id: string;
+  yellow_cards: number;
+  red_cards: number;
+};
+
+type MatchRatingRecord = {
+  match_id: string;
+  player_id: string;
+  rating: number;
+};
+
+type HistoryPresence = {
+  event_id: string | null;
+  player_id: string;
+  status: string;
+  event_role: PresenceRole | null;
+};
+
 type LeaderboardEntry = {
   player_id: string;
   player_name: string;
@@ -199,6 +228,20 @@ export default function Home() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [presences, setPresences] = useState<Presence[]>([]);
   const [matchPlayerStats, setMatchPlayerStats] = useState<MatchPlayerStat[]>([]);
+  const [matchReports, setMatchReports] = useState<MatchReport[]>([]);
+  const [matchDiscipline, setMatchDiscipline] = useState<MatchDiscipline[]>([]);
+  const [matchRatings, setMatchRatings] = useState<MatchRatingRecord[]>([]);
+  const [historyPresences, setHistoryPresences] = useState<HistoryPresence[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historySaving, setHistorySaving] = useState(false);
+  const [selectedHistoryMatchId, setSelectedHistoryMatchId] = useState<string | null>(null);
+  const [historyEventId, setHistoryEventId] = useState("");
+  const [historyOpponent, setHistoryOpponent] = useState("");
+  const [historyTeamScore, setHistoryTeamScore] = useState("0");
+  const [historyOpponentScore, setHistoryOpponentScore] = useState("0");
+  const [historyNote, setHistoryNote] = useState("");
+  const [historyMvpPlayerId, setHistoryMvpPlayerId] = useState("");
+  const [disciplineDrafts, setDisciplineDrafts] = useState<Record<string, { yellow: string; red: string }>>({});
 
   const [loadingPlayers, setLoadingPlayers] = useState(true);
   const [loadingPresences, setLoadingPresences] = useState(true);
@@ -711,6 +754,28 @@ export default function Home() {
     setMatchPlayerStats((data || []) as MatchPlayerStat[]);
   }, []);
 
+  const loadMatchHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    const [reportsResult, disciplineResult, ratingsResult, presencesResult] = await Promise.all([
+      supabase.from("match_reports").select("match_id, opponent, team_score, opponent_score, note, match_mvp_player_id"),
+      supabase.from("match_player_discipline").select("match_id, player_id, yellow_cards, red_cards"),
+      supabase.from("match_ratings").select("match_id, player_id, rating"),
+      supabase.from("presences").select("event_id, player_id, status, event_role").eq("status", "Presente").not("event_id", "is", null),
+    ]);
+
+    if (reportsResult.error || disciplineResult.error || ratingsResult.error || presencesResult.error) {
+      console.error("Errore caricamento storico partite:", reportsResult.error || disciplineResult.error || ratingsResult.error || presencesResult.error);
+      setHistoryLoading(false);
+      return;
+    }
+
+    setMatchReports((reportsResult.data || []) as MatchReport[]);
+    setMatchDiscipline((disciplineResult.data || []) as MatchDiscipline[]);
+    setMatchRatings((ratingsResult.data || []) as MatchRatingRecord[]);
+    setHistoryPresences((presencesResult.data || []) as HistoryPresence[]);
+    setHistoryLoading(false);
+  }, []);
+
   // =========================================================
   // LOAD PRESENCES
   // =========================================================
@@ -767,6 +832,12 @@ export default function Home() {
       void loadMatchPlayerStats();
     }
   }, [activeSection, loadMatchPlayerStats]);
+
+  useEffect(() => {
+    if (activeSection === "stats" && (isAdmin || sessionPlayerId)) {
+      void Promise.all([loadMatchPlayerStats(), loadMatchHistory()]);
+    }
+  }, [activeSection, isAdmin, sessionPlayerId, loadMatchHistory, loadMatchPlayerStats]);
 
   useEffect(() => {
     if (activeSection !== "calendar" || (!isAdmin && !sessionPlayerId)) return;
@@ -1050,6 +1121,38 @@ export default function Home() {
       .sort((a, b) => b.assists - a.assists || b.goals - a.goals || a.player_name.localeCompare(b.player_name)),
     [leaderboardEntries]
   );
+
+  const historyMatches = useMemo(
+    () => matchReports
+      .map((report) => ({ report, event: events.find((event) => event.id === report.match_id) }))
+      .filter((item): item is { report: MatchReport; event: EventItem } => Boolean(item.event))
+      .sort((a, b) => (b.event.event_date + (b.event.event_time || "")).localeCompare(a.event.event_date + (a.event.event_time || ""))),
+    [events, matchReports]
+  );
+
+  const historySummary = useMemo(() => {
+    const wins = historyMatches.filter(({ report }) => report.team_score > report.opponent_score).length;
+    const draws = historyMatches.filter(({ report }) => report.team_score === report.opponent_score).length;
+    const losses = historyMatches.length - wins - draws;
+    const goalsFor = historyMatches.reduce((total, { report }) => total + report.team_score, 0);
+    const goalsAgainst = historyMatches.reduce((total, { report }) => total + report.opponent_score, 0);
+    return { wins, draws, losses, goalsFor, goalsAgainst };
+  }, [historyMatches]);
+
+  const individualHistoryStats = useMemo(() => players.map((player) => {
+    const ratings = matchRatings.filter((rating) => rating.player_id === player.id);
+    const statRows = matchPlayerStats.filter((stat) => stat.player_id === player.id);
+    const presencesCount = historyPresences.filter((presence) => presence.player_id === player.id).length;
+    const averageRating = ratings.length
+      ? ratings.reduce((total, item) => total + Number(item.rating), 0) / ratings.length
+      : null;
+    const goals = statRows.reduce((total, item) => total + Number(item.goals || 0), 0);
+    const assists = statRows.reduce((total, item) => total + Number(item.assists || 0), 0);
+    const yellow = matchDiscipline.filter((item) => item.player_id === player.id).reduce((total, item) => total + Number(item.yellow_cards || 0), 0);
+    const red = matchDiscipline.filter((item) => item.player_id === player.id).reduce((total, item) => total + Number(item.red_cards || 0), 0);
+    const mvps = matchReports.filter((report) => report.match_mvp_player_id === player.id).length;
+    return { player, presencesCount, averageRating, goals, assists, yellow, red, mvps };
+  }).sort((a, b) => (b.averageRating || 0) - (a.averageRating || 0) || b.goals - a.goals), [players, matchRatings, matchPlayerStats, historyPresences, matchDiscipline, matchReports]);
 
   // =========================================================
   // PRESENCE
@@ -1464,6 +1567,121 @@ export default function Home() {
   }
 
   // =========================================================
+  // MATCH HISTORY
+  // =========================================================
+
+  function openMatchReport(event: EventItem, report?: MatchReport) {
+    setHistoryEventId(event.id);
+    setHistoryOpponent(report?.opponent || "");
+    setHistoryTeamScore(String(report?.team_score ?? 0));
+    setHistoryOpponentScore(String(report?.opponent_score ?? 0));
+    setHistoryNote(report?.note || "");
+    setHistoryMvpPlayerId(report?.match_mvp_player_id || "");
+    setSelectedHistoryMatchId(event.id);
+  }
+
+  function clearMatchReportForm() {
+    setHistoryEventId("");
+    setHistoryOpponent("");
+    setHistoryTeamScore("0");
+    setHistoryOpponentScore("0");
+    setHistoryNote("");
+    setHistoryMvpPlayerId("");
+  }
+
+  async function saveMatchReport() {
+    if (!historyEventId || !historyOpponent.trim()) {
+      alert("Seleziona la partita e scrivi l’avversario.");
+      return;
+    }
+
+    const teamScore = Number(historyTeamScore);
+    const opponentScore = Number(historyOpponentScore);
+    if (!Number.isInteger(teamScore) || teamScore < 0 || teamScore > 99 || !Number.isInteger(opponentScore) || opponentScore < 0 || opponentScore > 99) {
+      alert("Il risultato deve contenere numeri interi da 0 a 99.");
+      return;
+    }
+
+    setHistorySaving(true);
+    const { data, error } = await supabase
+      .from("match_reports")
+      .upsert({
+        match_id: historyEventId,
+        opponent: historyOpponent.trim(),
+        team_score: teamScore,
+        opponent_score: opponentScore,
+        note: historyNote.trim() || null,
+        match_mvp_player_id: historyMvpPlayerId || null,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "match_id" })
+      .select("match_id, opponent, team_score, opponent_score, note, match_mvp_player_id")
+      .single();
+
+    setHistorySaving(false);
+    if (error || !data) {
+      alert("Errore salvataggio risultato:\n" + (error?.message || "Partita non aggiornata."));
+      return;
+    }
+
+    setMatchReports((current) => {
+      const next = data as MatchReport;
+      return current.some((item) => item.match_id === next.match_id)
+        ? current.map((item) => item.match_id === next.match_id ? next : item)
+        : [...current, next];
+    });
+    setSelectedHistoryMatchId(historyEventId);
+    clearMatchReportForm();
+  }
+
+  async function deleteMatchReport(report: MatchReport) {
+    if (!window.confirm("Azzerare risultato e dati partita di “" + report.opponent + "”?")) return;
+    const { error } = await supabase.from("match_reports").delete().eq("match_id", report.match_id);
+    if (error) {
+      alert("Errore azzeramento partita:\n" + error.message);
+      return;
+    }
+    setMatchReports((current) => current.filter((item) => item.match_id !== report.match_id));
+    setSelectedHistoryMatchId(null);
+    clearMatchReportForm();
+  }
+
+  async function saveDiscipline(matchId: string, playerId: string) {
+    const key = matchId + ":" + playerId;
+    const draft = disciplineDrafts[key] || { yellow: "0", red: "0" };
+    const yellow = Number(draft.yellow || 0);
+    const red = Number(draft.red || 0);
+    if (!Number.isInteger(yellow) || yellow < 0 || yellow > 9 || !Number.isInteger(red) || red < 0 || red > 9) {
+      alert("Gialli e rossi devono essere numeri da 0 a 9.");
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("match_player_discipline")
+      .upsert({
+        match_id: matchId,
+        player_id: playerId,
+        yellow_cards: yellow,
+        red_cards: red,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "match_id,player_id" })
+      .select("match_id, player_id, yellow_cards, red_cards")
+      .single();
+
+    if (error || !data) {
+      alert("Errore salvataggio cartellini:\n" + (error?.message || "Dati non aggiornati."));
+      return;
+    }
+
+    const next = data as MatchDiscipline;
+    setMatchDiscipline((current) => {
+      const exists = current.some((item) => item.match_id === matchId && item.player_id === playerId);
+      return exists
+        ? current.map((item) => item.match_id === matchId && item.player_id === playerId ? next : item)
+        : [...current, next];
+    });
+  }
+
+  // =========================================================
   // COMPETITIONS
   // =========================================================
 
@@ -1507,10 +1725,10 @@ export default function Home() {
     ? menu
     : isPlayer
       ? menu.filter((item) =>
-          ["dashboard", "presences", "events", "calendar", "votes", "mvp"].includes(item.id)
+          ["dashboard", "presences", "events", "calendar", "votes", "mvp", "stats"].includes(item.id)
         )
       : menu.filter((item) =>
-          ["dashboard", "events", "votes", "mvp", "stats"].includes(item.id)
+          ["dashboard", "events", "votes", "mvp"].includes(item.id)
         );
   const presencePlayers = isPlayer
     ? players.filter((player) => player.id === sessionPlayerId)
@@ -2974,82 +3192,181 @@ export default function Home() {
 
         {activeSection === "stats" && (
           <div>
-
             <PageHeader
               eyebrow="CALCIO TOTALE"
-              title="📊 Statistiche"
-              description="Panoramica statistica della squadra."
+              title="📋 Storico Partite"
+              description="Risultati, prestazioni e statistiche della stagione."
             />
 
-            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-
-              <StatCard
-                icon="👥"
-                title="Rosa"
-                value={players.length}
-                text="Giocatori registrati"
-              />
-
-              <StatCard
-                icon="🟢"
-                title="Attivi"
-                value={activePlayers}
-                text="Giocatori attivi"
-              />
-
-              <StatCard
-                icon="🔴"
-                title="Inattivi"
-                value={inactivePlayers}
-                text="Giocatori inattivi"
-              />
-
-              <StatCard
-                icon="🏆"
-                title="Competizioni"
-                value={competitions.length}
-                text="Competizioni create"
-              />
-
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+              <StatCard icon="⚽" title="Partite" value={historyMatches.length} text="Risultati registrati" />
+              <StatCard icon="✅" title="Vittorie" value={historySummary.wins} text="Partite vinte" />
+              <StatCard icon="➖" title="Pareggi" value={historySummary.draws} text="Partite pareggiate" />
+              <StatCard icon="❌" title="Sconfitte" value={historySummary.losses} text="Partite perse" />
+              <StatCard icon="🥅" title="Gol" value={historySummary.goalsFor + " / " + historySummary.goalsAgainst} text="Fatti / subiti" />
             </div>
 
-            <div className="mt-8 rounded-3xl border border-slate-800 bg-slate-900 p-7">
+            {isAdmin && (
+              <section className="mt-8 rounded-3xl border border-emerald-500/30 bg-slate-900 p-5 sm:p-7">
+                <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-xl font-black">➕ Registra o modifica una partita</h3>
+                    <p className="mt-1 text-sm text-slate-400">I voti, gol, assist e ruoli serata vengono mantenuti dalle sezioni già esistenti.</p>
+                  </div>
+                  {historyEventId && (
+                    <button type="button" onClick={clearMatchReportForm} className="rounded-xl border border-slate-700 px-4 py-2 text-sm font-bold text-slate-300 hover:bg-slate-800">
+                      Annulla
+                    </button>
+                  )}
+                </div>
 
-              <h3 className="text-xl font-bold">
-                📋 Rosa per posizione
-              </h3>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold">Evento / partita</label>
+                    <select value={historyEventId} onChange={(event) => {
+                      const eventItem = events.find((item) => item.id === event.target.value);
+                      const report = matchReports.find((item) => item.match_id === event.target.value);
+                      if (eventItem) openMatchReport(eventItem, report);
+                      else setHistoryEventId("");
+                    }} className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-emerald-500">
+                      <option value="">Seleziona evento</option>
+                      {[...events].sort((a, b) => (b.event_date + (b.event_time || "")).localeCompare(a.event_date + (a.event_time || ""))).map((event) => (
+                        <option key={event.id} value={event.id}>{event.event_date} {event.event_time ? "· " + event.event_time.slice(0, 5) : ""} — {event.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <Input label="Avversario" value={historyOpponent} onChange={setHistoryOpponent} placeholder="Es. Squadra avversaria" />
+                  <Input label="Gol Calcio Totale" value={historyTeamScore} onChange={setHistoryTeamScore} type="number" />
+                  <Input label="Gol avversario" value={historyOpponentScore} onChange={setHistoryOpponentScore} type="number" />
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold">MVP partita</label>
+                    <select value={historyMvpPlayerId} onChange={(event) => setHistoryMvpPlayerId(event.target.value)} className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-emerald-500">
+                      <option value="">Nessun MVP</option>
+                      {players.map((player) => <option key={player.id} value={player.id}>{player.name}</option>)}
+                    </select>
+                  </div>
+                </div>
 
-              <div className="mt-6 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+                <div className="mt-4">
+                  <label className="mb-2 block text-sm font-semibold">Nota facoltativa</label>
+                  <textarea value={historyNote} onChange={(event) => setHistoryNote(event.target.value)} maxLength={1000} placeholder="Es. Partita sospesa, supplementari, note della gara..." className="min-h-24 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none placeholder:text-slate-600 focus:border-emerald-500" />
+                </div>
 
-                {positions.map((pos) => {
+                <div className="mt-5 flex flex-wrap gap-3">
+                  <button type="button" onClick={saveMatchReport} disabled={historySaving} className="rounded-xl bg-emerald-500 px-5 py-3 font-black text-slate-950 disabled:opacity-60">
+                    {historySaving ? "Salvataggio..." : "💾 Salva partita"}
+                  </button>
+                  {historyEventId && matchReports.some((report) => report.match_id === historyEventId) && (
+                    <button type="button" onClick={() => {
+                      const report = matchReports.find((item) => item.match_id === historyEventId);
+                      if (report) void deleteMatchReport(report);
+                    }} className="rounded-xl border border-red-500/40 px-5 py-3 font-bold text-red-300 hover:bg-red-500/10">
+                      ↺ Azzera risultato
+                    </button>
+                  )}
+                </div>
+              </section>
+            )}
 
-                  const count = players.filter(
-                    (player) =>
-                      player.position === pos.value
-                  ).length;
-
-                  return (
-                    <div
-                      key={pos.value}
-                      className="flex items-center justify-between rounded-xl bg-slate-950 p-4"
-                    >
-
-                      <span className="text-sm">
-                        {pos.label}
-                      </span>
-
-                      <span className="rounded-lg bg-slate-800 px-3 py-1 font-bold">
-                        {count}
-                      </span>
-
-                    </div>
-                  );
-                })}
-
+            <section className="mt-8 rounded-3xl border border-slate-800 bg-slate-900 p-5 sm:p-7">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-xl font-black">🏟️ Partite registrate</h3>
+                  <p className="mt-1 text-sm text-slate-400">Apri una partita per vedere ruoli, voti, gol, assist e cartellini.</p>
+                </div>
+                <span className="rounded-xl bg-slate-950 px-3 py-2 text-sm font-bold text-slate-300">{historyMatches.length} totali</span>
               </div>
 
-            </div>
+              {historyLoading ? (
+                <p className="py-10 text-center text-slate-400">Caricamento storico...</p>
+              ) : historyMatches.length === 0 ? (
+                <p className="mt-6 rounded-2xl bg-slate-950 p-6 text-center text-slate-400">Nessuna partita registrata. Gli Admin possono inserire il primo risultato qui sopra.</p>
+              ) : (
+                <div className="mt-6 space-y-4">
+                  {historyMatches.map(({ event, report }) => {
+                    const isOpen = selectedHistoryMatchId === event.id;
+                    const outcome = report.team_score > report.opponent_score ? "VITTORIA" : report.team_score === report.opponent_score ? "PAREGGIO" : "SCONFITTA";
+                    const outcomeClass = outcome === "VITTORIA" ? "bg-emerald-500/15 text-emerald-300" : outcome === "PAREGGIO" ? "bg-amber-500/15 text-amber-300" : "bg-red-500/15 text-red-300";
+                    const rows = historyPresences.filter((presence) => presence.event_id === event.id);
+                    return (
+                      <article key={event.id} className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-950/70">
+                        <button type="button" onClick={() => setSelectedHistoryMatchId(isOpen ? null : event.id)} className="flex w-full flex-col gap-3 p-5 text-left transition hover:bg-slate-900 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
+                            <p className="text-sm text-slate-400">{event.event_date} {event.event_time ? "· " + event.event_time.slice(0, 5) : ""} · {event.name}</p>
+                            <p className="mt-1 text-xl font-black">Calcio Totale <span className="text-slate-500">vs</span> {report.opponent}</p>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <p className="text-2xl font-black">{report.team_score} - {report.opponent_score}</p>
+                            <span className={"rounded-xl px-3 py-2 text-xs font-black " + outcomeClass}>{outcome}</span>
+                            <span className="text-slate-400">{isOpen ? "⌃" : "⌄"}</span>
+                          </div>
+                        </button>
 
+                        {isOpen && (
+                          <div className="border-t border-slate-800 p-4 sm:p-5">
+                            {report.note && <p className="mb-4 rounded-xl bg-slate-900 p-3 text-sm text-slate-300">📝 {report.note}</p>}
+                            <div className="overflow-x-auto">
+                              <table className="min-w-[760px] w-full text-left text-sm">
+                                <thead className="border-b border-slate-800 text-slate-400">
+                                  <tr>
+                                    <th className="px-3 py-3">Ruolo</th><th className="px-3 py-3">Giocatore</th><th className="px-3 py-3">Voto</th><th className="px-3 py-3">Gol</th><th className="px-3 py-3">Assist</th><th className="px-3 py-3">Gialli</th><th className="px-3 py-3">Rossi</th><th className="px-3 py-3">MVP</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {rows.map((presence) => {
+                                    const player = players.find((item) => item.id === presence.player_id);
+                                    const rating = matchRatings.find((item) => item.match_id === event.id && item.player_id === presence.player_id);
+                                    const stat = matchPlayerStats.find((item) => item.match_id === event.id && item.player_id === presence.player_id);
+                                    const discipline = matchDiscipline.find((item) => item.match_id === event.id && item.player_id === presence.player_id);
+                                    const key = event.id + ":" + presence.player_id;
+                                    const draft = disciplineDrafts[key] || { yellow: String(discipline?.yellow_cards || 0), red: String(discipline?.red_cards || 0) };
+                                    return (
+                                      <tr key={presence.player_id} className="border-b border-slate-900 last:border-0">
+                                        <td className="px-3 py-3 font-black text-emerald-300">{presence.event_role || player?.position || "—"}</td>
+                                        <td className="px-3 py-3 font-bold">{player?.name || "Giocatore"}</td>
+                                        <td className="px-3 py-3 font-mono font-black">{rating ? Number(rating.rating).toFixed(1) : "—"}</td>
+                                        <td className="px-3 py-3">{stat?.goals || 0}</td>
+                                        <td className="px-3 py-3">{stat?.assists || 0}</td>
+                                        <td className="px-3 py-3">{isAdmin ? <input value={draft.yellow} onChange={(event) => setDisciplineDrafts((current) => ({ ...current, [key]: { ...draft, yellow: event.target.value } }))} onBlur={() => void saveDiscipline(event.id, presence.player_id)} type="number" min="0" max="9" className="w-14 rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-center" /> : discipline?.yellow_cards || 0}</td>
+                                        <td className="px-3 py-3">{isAdmin ? <input value={draft.red} onChange={(event) => setDisciplineDrafts((current) => ({ ...current, [key]: { ...draft, red: event.target.value } }))} onBlur={() => void saveDiscipline(event.id, presence.player_id)} type="number" min="0" max="9" className="w-14 rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-center" /> : discipline?.red_cards || 0}</td>
+                                        <td className="px-3 py-3">{report.match_mvp_player_id === presence.player_id ? "🏆 MVP" : "—"}</td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                            {isAdmin && <p className="mt-3 text-xs text-slate-500">I cartellini si salvano automaticamente quando esci dalla casella.</p>}
+                          </div>
+                        )}
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+
+            <section className="mt-8 rounded-3xl border border-slate-800 bg-slate-900 p-5 sm:p-7">
+              <h3 className="text-xl font-black">👤 Statistiche individuali</h3>
+              <p className="mt-1 text-sm text-slate-400">Totali calcolati dai voti, dalle presenze e dalle prestazioni registrate.</p>
+              <div className="mt-5 overflow-x-auto">
+                <table className="min-w-[820px] w-full text-left text-sm">
+                  <thead className="border-b border-slate-800 text-slate-400">
+                    <tr><th className="px-3 py-3">Giocatore</th><th className="px-3 py-3">Presenze</th><th className="px-3 py-3">Media</th><th className="px-3 py-3">Gol</th><th className="px-3 py-3">Assist</th><th className="px-3 py-3">Gialli</th><th className="px-3 py-3">Rossi</th><th className="px-3 py-3">MVP</th></tr>
+                  </thead>
+                  <tbody>
+                    {individualHistoryStats.map((item) => (
+                      <tr key={item.player.id} className="border-b border-slate-900 last:border-0">
+                        <td className="px-3 py-3 font-bold">{item.player.name}</td>
+                        <td className="px-3 py-3">{item.presencesCount}</td>
+                        <td className="px-3 py-3 font-mono font-black text-emerald-300">{item.averageRating ? item.averageRating.toFixed(2) : "—"}</td>
+                        <td className="px-3 py-3">{item.goals}</td><td className="px-3 py-3">{item.assists}</td><td className="px-3 py-3">{item.yellow}</td><td className="px-3 py-3">{item.red}</td><td className="px-3 py-3">{item.mvps ? "🏆 " + item.mvps : "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
           </div>
         )}
 
