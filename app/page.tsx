@@ -1805,13 +1805,10 @@ export default function Home() {
   const presencePlayers = isPlayer
     ? players.filter((player) => player.id === sessionPlayerId)
     : players;
-  const presenceDepartments = [
-    { title: "🧤 CT | PORTIERI", positions: ["POR"] },
-    { title: "🛡️ CT | DIFESA", positions: ["DCD", "DCC", "DCS"] },
-    { title: "⚡ CT | ESTERNI", positions: ["ES", "ED"] },
-    { title: "🎯 CT | CENTROCAMPO", positions: ["CCS", "CDC", "CCD"] },
-    { title: "🔥 CT | ATTACCO", positions: ["ATT (PS)", "ATT (PD)"] },
-  ];
+  const presenceDepartments = playerPositionGroups.map((group) => ({
+    title: group.label,
+    positions: [group.id],
+  }));
 
   // =========================================================
   // RENDER
@@ -2600,7 +2597,10 @@ export default function Home() {
                         (presence?.status === "Presente" &&
                           presence.event_role === presenceRoleFilter))
                     );
-                  });
+                  }).sort((a, b) =>
+                    (a.position_rank || 999) - (b.position_rank || 999)
+                    || a.name.localeCompare(b.name, "it")
+                  );
                   if (departmentPlayers.length === 0) return null;
 
                   return (
