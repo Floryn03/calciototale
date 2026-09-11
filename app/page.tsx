@@ -3203,7 +3203,7 @@ export default function Home() {
               <StatCard icon="✅" title="Vittorie" value={historySummary.wins} text="Partite vinte" />
               <StatCard icon="➖" title="Pareggi" value={historySummary.draws} text="Partite pareggiate" />
               <StatCard icon="❌" title="Sconfitte" value={historySummary.losses} text="Partite perse" />
-              <StatCard icon="🥅" title="Gol" value={historySummary.goalsFor + " / " + historySummary.goalsAgainst} text="Fatti / subiti" />
+              <StatCard icon="🥅" title="Gol fatti" value={historySummary.goalsFor} text={historySummary.goalsAgainst + " subiti"} />
             </div>
 
             {isAdmin && (
