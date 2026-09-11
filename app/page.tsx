@@ -153,13 +153,13 @@ const statsRoleGroups = [
 
 const playerPositionGroups = [
   { id: "POR", label: "🧤 POR" },
-  { id: "DCS", label: "🛡️ DCS" },
   { id: "DCC", label: "🛡️ DCC" },
+  { id: "DCS", label: "🛡️ DCS" },
   { id: "DCD", label: "🛡️ DCD" },
-  { id: "ES", label: "🏃 ES" },
-  { id: "CCS", label: "⚙️ CCS" },
   { id: "CDC", label: "⚙️ CDC" },
+  { id: "CCS", label: "⚙️ CCS" },
   { id: "CCD", label: "⚙️ CCD" },
+  { id: "ES", label: "🏃 ES" },
   { id: "ED", label: "🏃 ED" },
   { id: "ATT (PS)", label: "⚽ ATT (PS)" },
   { id: "ATT (PD)", label: "⚽ ATT (PD)" },
