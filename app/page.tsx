@@ -12,6 +12,7 @@ type Player = {
   psn_id: string;
   shirt_number: number;
   position: string;
+  secondary_positions: string[];
   status: string;
   created_at: string;
 };
@@ -270,6 +271,7 @@ export default function Home() {
   const [psnId, setPsnId] = useState("");
   const [shirtNumber, setShirtNumber] = useState("");
   const [position, setPosition] = useState("");
+  const [secondaryPositions, setSecondaryPositions] = useState<string[]>([]);
   const [status, setStatus] = useState("Attivo");
 
   const [search, setSearch] = useState("");
@@ -915,6 +917,7 @@ export default function Home() {
     setPsnId("");
     setShirtNumber("");
     setPosition("");
+    setSecondaryPositions([]);
     setStatus("Attivo");
     setShowPlayerForm(true);
   }
@@ -925,6 +928,7 @@ export default function Home() {
     setPsnId(player.psn_id);
     setShirtNumber(String(player.shirt_number));
     setPosition(player.position);
+    setSecondaryPositions(player.secondary_positions || []);
     setStatus(player.status);
     setShowPlayerForm(true);
   }
@@ -934,6 +938,17 @@ export default function Home() {
       setShowPlayerForm(false);
       setEditingPlayer(null);
     }
+  }
+
+  function toggleSecondaryPosition(role: string) {
+    setSecondaryPositions((current) => {
+      if (current.includes(role)) return current.filter((item) => item !== role);
+      if (current.length >= 3) {
+        alert("Puoi indicare al massimo 3 ruoli affini.");
+        return current;
+      }
+      return [...current, role];
+    });
   }
 
   // =========================================================
@@ -978,6 +993,7 @@ export default function Home() {
           psn_id: psnId.trim(),
           shirt_number: number,
           position,
+          secondary_positions: secondaryPositions,
           status,
         })
         .eq("id", editingPlayer.id)
@@ -1001,6 +1017,7 @@ export default function Home() {
             psn_id: psnId.trim(),
             shirt_number: number,
             position,
+            secondary_positions: secondaryPositions,
             status,
           },
         ])
@@ -1088,9 +1105,19 @@ export default function Home() {
       (player) =>
         player.name.toLowerCase().includes(value) ||
         player.psn_id.toLowerCase().includes(value) ||
-        player.position.toLowerCase().includes(value)
+        player.position.toLowerCase().includes(value) ||
+        (player.secondary_positions || []).some((role) => role.toLowerCase().includes(value))
     );
   }, [players, search]);
+
+  const groupedPlayers = useMemo(() => statsRoleGroups
+    .map((group) => ({
+      ...group,
+      players: filteredPlayers
+        .filter((player) => getStatsRoleGroup(player.position) === group.id)
+        .sort((a, b) => a.name.localeCompare(b.name, "it")),
+    }))
+    .filter((group) => group.players.length > 0), [filteredPlayers]);
 
   // =========================================================
   // PLAYER COUNTERS
@@ -2180,9 +2207,11 @@ export default function Home() {
 
                     <select
                       value={position}
-                      onChange={(e) =>
-                        setPosition(e.target.value)
-                      }
+                      onChange={(e) => {
+                        const nextPosition = e.target.value;
+                        setPosition(nextPosition);
+                        setSecondaryPositions((current) => current.filter((role) => role !== nextPosition));
+                      }}
                       className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-emerald-500"
                     >
                       <option value="">
@@ -2199,6 +2228,30 @@ export default function Home() {
                       ))}
 
                     </select>
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="mb-2 block text-sm font-semibold">
+                      Ruoli affini <span className="text-slate-500">(massimo 3)</span>
+                    </label>
+                    <p className="mb-3 text-sm text-slate-500">
+                      Ruoli alternativi in cui il giocatore può essere schierato. Il ruolo originario resta invariato.
+                    </p>
+                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                      {positions.filter((item) => item.value !== position).map((item) => {
+                        const selected = secondaryPositions.includes(item.value);
+                        return (
+                          <button
+                            key={item.value}
+                            type="button"
+                            onClick={() => toggleSecondaryPosition(item.value)}
+                            className={`rounded-xl border px-4 py-3 text-left text-sm font-bold transition ${selected ? "border-emerald-400 bg-emerald-500/15 text-emerald-300" : "border-slate-700 bg-slate-950 text-slate-300 hover:border-slate-500"}`}
+                          >
+                            {selected ? "✓ " : ""}{item.value}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
 
                   <div>
@@ -2268,20 +2321,28 @@ export default function Home() {
                 text="Non ci sono giocatori da visualizzare."
               />
             ) : (
-              <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-
-                {filteredPlayers.map((player) => (
-                  <PlayerCard
-                    key={player.id}
-                    player={player}
-                    onDelete={deletePlayer}
-                    onToggleStatus={togglePlayerStatus}
-                    onEdit={openEditPlayer}
-                    onProfile={setProfilePlayer}
-                    canManage={isAdmin}
-                  />
+              <div className="space-y-9">
+                {groupedPlayers.map((group) => (
+                  <section key={group.id}>
+                    <div className="mb-4 flex items-center justify-between border-b border-emerald-500/20 pb-3">
+                      <h2 className="text-xl font-black text-emerald-300">{group.label}</h2>
+                      <span className="rounded-lg bg-emerald-500/10 px-3 py-1 text-sm font-black text-emerald-300">{group.players.length}</span>
+                    </div>
+                    <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+                      {group.players.map((player) => (
+                        <PlayerCard
+                          key={player.id}
+                          player={player}
+                          onDelete={deletePlayer}
+                          onToggleStatus={togglePlayerStatus}
+                          onEdit={openEditPlayer}
+                          onProfile={setProfilePlayer}
+                          canManage={isAdmin}
+                        />
+                      ))}
+                    </div>
+                  </section>
                 ))}
-
               </div>
             )}
 
@@ -4178,11 +4239,18 @@ function PlayerCard({
 
       </div>
 
-      <div className="mt-5 flex flex-wrap gap-2">
+      <div className="mt-5 grid gap-3 rounded-xl bg-slate-950 p-4 sm:grid-cols-2">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Ruolo originario</p>
+          <p className="mt-1 font-black text-emerald-300">{player.position}</p>
+        </div>
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Ruoli affini</p>
+          <p className="mt-1 font-bold text-slate-200">{player.secondary_positions?.length ? player.secondary_positions.join(" · ") : "—"}</p>
+        </div>
+      </div>
 
-        <span className="rounded-lg bg-emerald-500/10 px-3 py-1.5 text-sm font-bold text-emerald-400">
-          {player.position}
-        </span>
+      <div className="mt-3 flex flex-wrap gap-2">
 
         {canManage ? (
           <button
