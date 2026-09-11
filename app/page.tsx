@@ -2367,7 +2367,9 @@ export default function Home() {
                         <PlayerCard
                           key={player.id}
                           player={player}
-                          hierarchyPosition={index + 1}
+                          hierarchyPosition={group.id === "ATT (PD)"
+                            ? players.filter((item) => item.position === "ATT (PS)").length + index + 1
+                            : index + 1}
                           onDelete={deletePlayer}
                           onToggleStatus={togglePlayerStatus}
                           onEdit={openEditPlayer}
