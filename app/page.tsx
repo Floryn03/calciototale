@@ -13,6 +13,7 @@ type Player = {
   shirt_number: number;
   position: string;
   secondary_positions: string[];
+  position_rank: number;
   status: string;
   created_at: string;
 };
@@ -150,6 +151,20 @@ const statsRoleGroups = [
   { id: "others", label: "Altri ruoli", matches: () => true },
 ];
 
+const playerPositionGroups = [
+  { id: "POR", label: "🧤 POR" },
+  { id: "DCS", label: "🛡️ DCS" },
+  { id: "DCC", label: "🛡️ DCC" },
+  { id: "DCD", label: "🛡️ DCD" },
+  { id: "ES", label: "🏃 ES" },
+  { id: "CCS", label: "⚙️ CCS" },
+  { id: "CDC", label: "⚙️ CDC" },
+  { id: "CCD", label: "⚙️ CCD" },
+  { id: "ED", label: "🏃 ED" },
+  { id: "ATT (PS)", label: "⚽ ATT (PS)" },
+  { id: "ATT (PD)", label: "⚽ ATT (PD)" },
+];
+
 function getStatsRoleGroup(position: string) {
   return statsRoleGroups.find((group) => group.matches(position))?.id || "others";
 }
@@ -272,6 +287,7 @@ export default function Home() {
   const [shirtNumber, setShirtNumber] = useState("");
   const [position, setPosition] = useState("");
   const [secondaryPositions, setSecondaryPositions] = useState<string[]>([]);
+  const [positionRank, setPositionRank] = useState("");
   const [status, setStatus] = useState("Attivo");
 
   const [search, setSearch] = useState("");
@@ -918,6 +934,7 @@ export default function Home() {
     setShirtNumber("");
     setPosition("");
     setSecondaryPositions([]);
+    setPositionRank("");
     setStatus("Attivo");
     setShowPlayerForm(true);
   }
@@ -929,6 +946,7 @@ export default function Home() {
     setShirtNumber(String(player.shirt_number));
     setPosition(player.position);
     setSecondaryPositions(player.secondary_positions || []);
+    setPositionRank(player.position_rank && player.position_rank < 999 ? String(player.position_rank) : "");
     setStatus(player.status);
     setShowPlayerForm(true);
   }
@@ -976,6 +994,12 @@ export default function Home() {
       return;
     }
 
+    const rank = positionRank.trim() ? Number(positionRank) : 999;
+    if (!Number.isInteger(rank) || rank < 1 || rank > 999) {
+      alert("La posizione in gerarchia deve essere un numero da 1 a 999.");
+      return;
+    }
+
     const number = Number(shirtNumber);
 
     if (!Number.isInteger(number) || number < 1 || number > 99) {
@@ -994,6 +1018,7 @@ export default function Home() {
           shirt_number: number,
           position,
           secondary_positions: secondaryPositions,
+          position_rank: rank,
           status,
         })
         .eq("id", editingPlayer.id)
@@ -1018,6 +1043,7 @@ export default function Home() {
             shirt_number: number,
             position,
             secondary_positions: secondaryPositions,
+            position_rank: rank,
             status,
           },
         ])
@@ -1110,12 +1136,12 @@ export default function Home() {
     );
   }, [players, search]);
 
-  const groupedPlayers = useMemo(() => statsRoleGroups
+  const groupedPlayers = useMemo(() => playerPositionGroups
     .map((group) => ({
       ...group,
       players: filteredPlayers
-        .filter((player) => getStatsRoleGroup(player.position) === group.id)
-        .sort((a, b) => a.name.localeCompare(b.name, "it")),
+        .filter((player) => player.position === group.id)
+        .sort((a, b) => (a.position_rank || 999) - (b.position_rank || 999) || a.name.localeCompare(b.name, "it")),
     }))
     .filter((group) => group.players.length > 0), [filteredPlayers]);
 
@@ -2230,6 +2256,14 @@ export default function Home() {
                     </select>
                   </div>
 
+                  <Input
+                    label="Posizione in gerarchia"
+                    value={positionRank}
+                    onChange={setPositionRank}
+                    placeholder="Es. 1 (lascia vuoto per fondo lista)"
+                    type="number"
+                  />
+
                   <div className="md:col-span-2">
                     <label className="mb-2 block text-sm font-semibold">
                       Ruoli affini <span className="text-slate-500">(massimo 3)</span>
@@ -2329,10 +2363,11 @@ export default function Home() {
                       <span className="rounded-lg bg-emerald-500/10 px-3 py-1 text-sm font-black text-emerald-300">{group.players.length}</span>
                     </div>
                     <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-                      {group.players.map((player) => (
+                      {group.players.map((player, index) => (
                         <PlayerCard
                           key={player.id}
                           player={player}
+                          hierarchyPosition={index + 1}
                           onDelete={deletePlayer}
                           onToggleStatus={togglePlayerStatus}
                           onEdit={openEditPlayer}
@@ -4198,6 +4233,7 @@ function PlayerCard({
   onEdit,
   onProfile,
   canManage,
+  hierarchyPosition,
 }: {
   player: Player;
   onDelete: (player: Player) => void;
@@ -4205,6 +4241,7 @@ function PlayerCard({
   onEdit: (player: Player) => void;
   onProfile: (player: Player) => void;
   canManage: boolean;
+  hierarchyPosition: number;
 }) {
   const isActive = player.status === "Attivo";
 
@@ -4222,7 +4259,7 @@ function PlayerCard({
           <div>
 
             <h3 className="text-xl font-black uppercase">
-              {player.name}
+              <span className="mr-2 text-emerald-300">{hierarchyPosition}.</span>{player.name}
             </h3>
 
             <p className="mt-1 text-sm text-slate-500">
