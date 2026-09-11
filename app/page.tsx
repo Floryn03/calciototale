@@ -1152,7 +1152,19 @@ export default function Home() {
     const red = matchDiscipline.filter((item) => item.player_id === player.id).reduce((total, item) => total + Number(item.red_cards || 0), 0);
     const mvps = matchReports.filter((report) => report.match_mvp_player_id === player.id).length;
     return { player, presencesCount, averageRating, goals, assists, yellow, red, mvps };
-  }).sort((a, b) => (b.averageRating || 0) - (a.averageRating || 0) || b.goals - a.goals), [players, matchRatings, matchPlayerStats, historyPresences, matchDiscipline, matchReports]);
+  }).sort((a, b) => {
+    const roleOrder = (position: string) => {
+      if (position === "POR") return 0;
+      if (["DCD", "DCC", "DCS"].includes(position)) return 1;
+      if (["ES", "ED"].includes(position)) return 2;
+      if (["CCS", "CDC", "CCD"].includes(position)) return 3;
+      if (position.startsWith("ATT")) return 4;
+      return 5;
+    };
+
+    return roleOrder(a.player.position) - roleOrder(b.player.position)
+      || a.player.name.localeCompare(b.player.name, "it");
+  }), [players, matchRatings, matchPlayerStats, historyPresences, matchDiscipline, matchReports]);
 
   // =========================================================
   // PRESENCE
