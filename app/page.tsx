@@ -421,6 +421,9 @@ export default function Home() {
   const [competitionLoading, setCompetitionLoading] = useState(false);
   const [competitionSaving, setCompetitionSaving] = useState(false);
   const [selectedCompetitionId, setSelectedCompetitionId] = useState<string | null>(null);
+  const [editingCompetitionId, setEditingCompetitionId] = useState<string | null>(null);
+  const [editingCompetitionName, setEditingCompetitionName] = useState("");
+  const [editingCompetitionType, setEditingCompetitionType] = useState("");
   const [competitionArea, setCompetitionArea] = useState<CompetitionArea>("ELUDO");
   const [competitionFormat, setCompetitionFormat] = useState<"Campionato" | "Torneo Serale">("Campionato");
   const [competitionName, setCompetitionName] = useState("");
@@ -2135,6 +2138,63 @@ export default function Home() {
     setCompetitions((current) => current.map((item) => item.id === competition.id ? { ...item, status } : item));
   }
 
+  function startEditCompetition(competition: Competition) {
+    setEditingCompetitionId(competition.id);
+    setEditingCompetitionName(competition.name);
+    setEditingCompetitionType(competition.type);
+  }
+
+  async function saveCompetitionDetails(competition: Competition) {
+    if (!isAdmin || !editingCompetitionName.trim()) {
+      alert("Inserisci il nome della competizione.");
+      return;
+    }
+    setCompetitionSaving(true);
+    const { data, error } = await supabase.from("competitions").update({
+      name: editingCompetitionName.trim(),
+      type: editingCompetitionType || competition.type,
+      updated_at: new Date().toISOString(),
+    }).eq("id", competition.id).select("id, name, type, status, competition_area, format, double_round").single();
+    setCompetitionSaving(false);
+    if (error || !data) {
+      alert("Errore modifica competizione:\n" + (error?.message || "Dati non aggiornati."));
+      return;
+    }
+    setCompetitions((current) => current.map((item) => item.id === competition.id ? data as Competition : item));
+    setEditingCompetitionId(null);
+  }
+
+  async function resetCompetitionCalendar(competition: Competition) {
+    if (!isAdmin) return;
+    if (!window.confirm(`Azzerare calendario, risultati e classifica di “${competition.name}”?\n\nLa competizione e le squadre rimarranno salvate.`)) return;
+    setCompetitionSaving(true);
+    const { error } = await supabase.from("competition_matches").delete().eq("competition_id", competition.id);
+    setCompetitionSaving(false);
+    if (error) {
+      alert("Errore azzeramento calendario:\n" + error.message);
+      return;
+    }
+    setCompetitionMatches((current) => current.filter((match) => match.competition_id !== competition.id));
+    alert("Calendario e risultati azzerati. Squadre e competizione restano disponibili.");
+  }
+
+  async function deleteCompetition(competition: Competition) {
+    if (!isAdmin) return;
+    if (!window.confirm(`Eliminare definitivamente “${competition.name}”?\n\nSaranno rimossi solo squadre, giornate e risultati di questa competizione. Eventi, presenze, giocatori e statistiche non verranno toccati.`)) return;
+    setCompetitionSaving(true);
+    const { error } = await supabase.from("competitions").delete().eq("id", competition.id);
+    setCompetitionSaving(false);
+    if (error) {
+      alert("Errore eliminazione competizione:\n" + error.message);
+      return;
+    }
+    setCompetitions((current) => current.filter((item) => item.id !== competition.id));
+    setCompetitionTeams((current) => current.filter((team) => team.competition_id !== competition.id));
+    setCompetitionMatches((current) => current.filter((match) => match.competition_id !== competition.id));
+    setSelectedCompetitionId(null);
+    setEditingCompetitionId(null);
+  }
+
   async function addCompetitionTeam(competition: Competition) {
     if (!isAdmin || !newCompetitionTeamName.trim()) return;
     const exists = competitionTeams.some((team) => team.competition_id === competition.id && team.name.trim().toLowerCase() === newCompetitionTeamName.trim().toLowerCase());
@@ -3807,7 +3867,9 @@ export default function Home() {
               </div>
 
               {selectedCompetition && <section className="mt-8 rounded-3xl border border-slate-800 bg-slate-900 p-5 sm:p-7">
-                <div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-300">{selectedCompetition.competition_area === "TORNEO_SERALE" ? "Torneo Serale" : selectedCompetition.competition_area}</p><h3 className="mt-1 text-2xl font-black">{selectedCompetition.name}</h3><p className="mt-1 text-sm text-slate-400">{selectedCompetition.format === "Campionato" ? "Calendario all’italiana: andata e ritorno, 3 punti per vittoria." : "Aggiungi giornate del girone e poi le fasi finali che vuoi."}</p></div>{isAdmin && <button type="button" onClick={() => void toggleCompetition(selectedCompetition)} className="rounded-xl border border-slate-700 px-4 py-2 text-sm font-bold text-slate-300 hover:bg-slate-800">{selectedCompetition.status === "Attiva" ? "⏹️ Concludi" : "▶️ Riattiva"}</button>}</div>
+                <div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-300">{selectedCompetition.competition_area === "TORNEO_SERALE" ? "Torneo Serale" : selectedCompetition.competition_area}</p><h3 className="mt-1 text-2xl font-black">{selectedCompetition.name}</h3><p className="mt-1 text-sm text-slate-400">{selectedCompetition.format === "Campionato" ? "Calendario all’italiana: andata e ritorno, 3 punti per vittoria." : "Aggiungi giornate del girone e poi le fasi finali che vuoi."}</p></div>{isAdmin && <div className="flex flex-wrap gap-2"><button type="button" onClick={() => startEditCompetition(selectedCompetition)} className="rounded-xl border border-emerald-500/40 px-4 py-2 text-sm font-bold text-emerald-300 hover:bg-emerald-500/10">✏️ Modifica</button><button type="button" disabled={competitionSaving} onClick={() => void resetCompetitionCalendar(selectedCompetition)} className="rounded-xl border border-amber-500/40 px-4 py-2 text-sm font-bold text-amber-300 hover:bg-amber-500/10">↺ Azzera</button><button type="button" disabled={competitionSaving} onClick={() => void deleteCompetition(selectedCompetition)} className="rounded-xl border border-red-500/40 px-4 py-2 text-sm font-bold text-red-300 hover:bg-red-500/10">🗑️ Elimina</button><button type="button" onClick={() => void toggleCompetition(selectedCompetition)} className="rounded-xl border border-slate-700 px-4 py-2 text-sm font-bold text-slate-300 hover:bg-slate-800">{selectedCompetition.status === "Attiva" ? "⏹️ Concludi" : "▶️ Riattiva"}</button></div>}</div>
+
+                {isAdmin && editingCompetitionId === selectedCompetition.id && <div className="mt-5 grid gap-3 rounded-2xl border border-emerald-500/25 bg-slate-950 p-4 sm:grid-cols-3"><Input label="Nome competizione" value={editingCompetitionName} onChange={setEditingCompetitionName} /><div><label className="mb-2 block text-sm font-semibold">Tipo</label><select value={editingCompetitionType} onChange={(event) => setEditingCompetitionType(event.target.value)} className="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3"><option>Campionato</option><option>Torneo</option><option>Cup</option><option>Amichevole</option><option>Lega</option></select></div><div className="flex items-end gap-2"><button type="button" disabled={competitionSaving} onClick={() => void saveCompetitionDetails(selectedCompetition)} className="rounded-xl bg-emerald-500 px-4 py-3 font-black text-slate-950">💾 Salva</button><button type="button" onClick={() => setEditingCompetitionId(null)} className="rounded-xl border border-slate-700 px-4 py-3 font-bold text-slate-300">Annulla</button></div></div>}
 
                 {isAdmin && <div className="mt-6 rounded-2xl bg-slate-950 p-4"><p className="font-black">Squadre partecipanti</p><div className="mt-3 flex flex-wrap gap-2">{selectedCompetitionTeams.map((team) => <span key={team.id} className={(team.is_calcio_totale ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200" : "border-slate-700 text-slate-300") + " rounded-lg border px-3 py-2 text-sm font-bold"}>{team.name}</span>)}</div><div className="mt-4 flex flex-col gap-2 sm:flex-row"><input value={newCompetitionTeamName} onChange={(event) => setNewCompetitionTeamName(event.target.value)} placeholder="Nome avversario" className="min-h-11 flex-1 rounded-xl border border-slate-700 bg-slate-900 px-4 text-white" /><button type="button" onClick={() => void addCompetitionTeam(selectedCompetition)} className="min-h-11 rounded-xl border border-emerald-500/40 px-4 font-bold text-emerald-300 hover:bg-emerald-500/10">➕ Aggiungi squadra</button></div></div>}
 
