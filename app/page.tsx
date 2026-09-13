@@ -37,6 +37,40 @@ type EventItem = {
   event_time: string | null;
 };
 
+type CompetitionArea = "ELUDO" | "VPG" | "VPC" | "PROCLUBBER" | "LND" | "ALLSTARS" | "VPL" | "FVPA" | "TORNEO_SERALE";
+
+type Competition = {
+  id: string;
+  name: string;
+  type: string;
+  status: string;
+  competition_area: CompetitionArea | null;
+  format: "Campionato" | "Torneo Serale";
+  double_round: boolean;
+};
+
+type CompetitionTeam = {
+  id: string;
+  competition_id: string;
+  name: string;
+  is_calcio_totale: boolean;
+};
+
+type CompetitionMatch = {
+  id: string;
+  competition_id: string;
+  round_number: number;
+  phase: string;
+  home_team_id: string;
+  away_team_id: string;
+  match_date: string | null;
+  match_time: string | null;
+  home_score: number | null;
+  away_score: number | null;
+  status: string;
+  notes: string | null;
+};
+
 type CalendarEntry = {
   id: string;
   entry_date: string;
@@ -165,6 +199,8 @@ const presenceRoles: PresenceRole[] = ["POR", "DCD", "DCC", "DCS", "ES", "ED", "
 
 // Il referto ha una sola voce ATT, come richiesto: nessuna distinzione ATT (PS) / ATT (PD).
 const eventReportPositions: EventReportPosition[] = ["POR", "DCC", "DCS", "DCD", "CDC", "CCS", "CCD", "ES", "ED", "ATT"];
+const officialCompetitionAreas: CompetitionArea[] = ["ELUDO", "VPG", "VPC", "PROCLUBBER", "LND", "ALLSTARS", "VPL", "FVPA"];
+const tournamentPhases = ["Girone", "Sedicesimi", "Ottavi", "Quarti", "Semifinale", "Finale"];
 
 const playerPositionGroups = [
   { id: "POR", label: "🧤 POR" },
@@ -379,17 +415,22 @@ export default function Home() {
   const [presenceNoteDraft, setPresenceNoteDraft] = useState("");
   const [presenceRoleFilter, setPresenceRoleFilter] = useState<PresenceRole | "">("");
 
-  const [competitions, setCompetitions] = useState<
-    {
-      id: number;
-      name: string;
-      type: string;
-      status: string;
-    }[]
-  >([]);
-
+  const [competitions, setCompetitions] = useState<Competition[]>([]);
+  const [competitionTeams, setCompetitionTeams] = useState<CompetitionTeam[]>([]);
+  const [competitionMatches, setCompetitionMatches] = useState<CompetitionMatch[]>([]);
+  const [competitionLoading, setCompetitionLoading] = useState(false);
+  const [competitionSaving, setCompetitionSaving] = useState(false);
+  const [selectedCompetitionId, setSelectedCompetitionId] = useState<string | null>(null);
+  const [competitionArea, setCompetitionArea] = useState<CompetitionArea>("ELUDO");
+  const [competitionFormat, setCompetitionFormat] = useState<"Campionato" | "Torneo Serale">("Campionato");
   const [competitionName, setCompetitionName] = useState("");
-  const [competitionType, setCompetitionType] = useState("Torneo");
+  const [competitionType, setCompetitionType] = useState("Campionato");
+  const [newCompetitionTeamName, setNewCompetitionTeamName] = useState("");
+  const [manualMatchPhase, setManualMatchPhase] = useState("Girone");
+  const [manualMatchRound, setManualMatchRound] = useState("1");
+  const [manualMatchOpponentId, setManualMatchOpponentId] = useState("");
+  const [manualMatchDate, setManualMatchDate] = useState("");
+  const [manualMatchTime, setManualMatchTime] = useState("");
 
   const weeklyAvailabilityStart = useMemo(
     () => weekStartFromDate(weeklyAvailabilityWeek),
@@ -2032,47 +2073,202 @@ export default function Home() {
   // COMPETITIONS
   // =========================================================
 
-  function addCompetition() {
-    if (!competitionName.trim()) {
-      alert("Inserisci il nome della competizione.");
+  const loadCompetitions = useCallback(async () => {
+    setCompetitionLoading(true);
+    const [competitionsResult, teamsResult, matchesResult] = await Promise.all([
+      supabase.from("competitions").select("id, name, type, status, competition_area, format, double_round").order("created_at", { ascending: false }),
+      supabase.from("competition_teams").select("id, competition_id, name, is_calcio_totale").order("created_at", { ascending: true }),
+      supabase.from("competition_matches").select("id, competition_id, round_number, phase, home_team_id, away_team_id, match_date, match_time, home_score, away_score, status, notes").order("round_number", { ascending: true }),
+    ]);
+    if (competitionsResult.error || teamsResult.error || matchesResult.error) {
+      console.error("Errore caricamento competizioni:", competitionsResult.error || teamsResult.error || matchesResult.error);
+      setCompetitionLoading(false);
       return;
     }
+    setCompetitions((competitionsResult.data || []) as Competition[]);
+    setCompetitionTeams((teamsResult.data || []) as CompetitionTeam[]);
+    setCompetitionMatches((matchesResult.data || []) as CompetitionMatch[]);
+    setCompetitionLoading(false);
+  }, []);
 
-    setCompetitions((current) => [
-      ...current,
-      {
-        id: Date.now(),
-        name: competitionName.trim(),
-        type: competitionType,
-        status: "Attiva",
-      },
-    ]);
-
+  async function addCompetition() {
+    if (!isAdmin) return;
+    setCompetitionSaving(true);
+    const isSerale = competitionFormat === "Torneo Serale";
+    const resolvedName = competitionName.trim() || (isSerale ? "Torneo Serale" : competitionArea);
+    const { data, error } = await supabase.from("competitions").insert({
+      name: resolvedName,
+      type: isSerale ? "Torneo" : competitionType,
+      status: "Attiva",
+      competition_area: isSerale ? "TORNEO_SERALE" : competitionArea,
+      format: competitionFormat,
+      double_round: !isSerale,
+    }).select("id, name, type, status, competition_area, format, double_round").single();
+    if (error || !data) {
+      setCompetitionSaving(false);
+      alert("Errore creazione competizione:\n" + (error?.message || "Competizione non creata."));
+      return;
+    }
+    const competition = data as Competition;
+    const { error: teamError } = await supabase.from("competition_teams").insert({
+      competition_id: competition.id,
+      name: "Calcio Totale",
+      is_calcio_totale: true,
+    });
+    setCompetitionSaving(false);
+    if (teamError) {
+      alert("Competizione creata, ma non è stato possibile aggiungere Calcio Totale.\n" + teamError.message);
+    }
     setCompetitionName("");
+    setSelectedCompetitionId(competition.id);
+    await loadCompetitions();
   }
 
-  function toggleCompetition(id: number) {
-    setCompetitions((current) =>
-      current.map((competition) =>
-        competition.id === id
-          ? {
-              ...competition,
-              status:
-                competition.status === "Attiva"
-                  ? "Conclusa"
-                  : "Attiva",
-            }
-          : competition
-      )
-    );
+  async function toggleCompetition(competition: Competition) {
+    if (!isAdmin) return;
+    const status = competition.status === "Attiva" ? "Conclusa" : "Attiva";
+    const { error } = await supabase.from("competitions").update({ status }).eq("id", competition.id);
+    if (error) {
+      alert("Errore aggiornamento competizione:\n" + error.message);
+      return;
+    }
+    setCompetitions((current) => current.map((item) => item.id === competition.id ? { ...item, status } : item));
   }
+
+  async function addCompetitionTeam(competition: Competition) {
+    if (!isAdmin || !newCompetitionTeamName.trim()) return;
+    const exists = competitionTeams.some((team) => team.competition_id === competition.id && team.name.trim().toLowerCase() === newCompetitionTeamName.trim().toLowerCase());
+    if (exists) {
+      alert("Questa squadra è già presente.");
+      return;
+    }
+    const { data, error } = await supabase.from("competition_teams").insert({
+      competition_id: competition.id,
+      name: newCompetitionTeamName.trim(),
+      is_calcio_totale: false,
+    }).select("id, competition_id, name, is_calcio_totale").single();
+    if (error || !data) {
+      alert("Errore inserimento avversario:\n" + (error?.message || "Squadra non aggiunta."));
+      return;
+    }
+    setCompetitionTeams((current) => [...current, data as CompetitionTeam]);
+    setNewCompetitionTeamName("");
+  }
+
+  function buildRoundRobin(teamIds: string[]) {
+    const rotating = [...teamIds];
+    if (rotating.length % 2) rotating.push("BYE");
+    const rounds = rotating.length - 1;
+    const fixtures: Array<{ round_number: number; phase: string; home_team_id: string; away_team_id: string }> = [];
+    for (let round = 0; round < rounds; round += 1) {
+      for (let index = 0; index < rotating.length / 2; index += 1) {
+        const first = rotating[index];
+        const second = rotating[rotating.length - 1 - index];
+        if (first !== "BYE" && second !== "BYE") {
+          fixtures.push({ round_number: round + 1, phase: "Andata", home_team_id: round % 2 ? second : first, away_team_id: round % 2 ? first : second });
+        }
+      }
+      rotating.splice(1, 0, rotating.pop()!);
+    }
+    return [...fixtures, ...fixtures.map((match) => ({
+      round_number: match.round_number + rounds,
+      phase: "Ritorno",
+      home_team_id: match.away_team_id,
+      away_team_id: match.home_team_id,
+    }))];
+  }
+
+  async function generateLeagueCalendar(competition: Competition) {
+    if (!isAdmin) return;
+    const teams = competitionTeams.filter((team) => team.competition_id === competition.id);
+    if (teams.length < 2) {
+      alert("Aggiungi almeno un avversario oltre a Calcio Totale.");
+      return;
+    }
+    const existing = competitionMatches.filter((match) => match.competition_id === competition.id);
+    if (existing.length && !window.confirm("Esiste già un calendario. Rigenerarlo cancellerà solo le partite di questa competizione senza risultati.")) return;
+    if (existing.some((match) => match.home_score !== null || match.away_score !== null)) {
+      alert("Non puoi rigenerare il calendario dopo aver inserito risultati.");
+      return;
+    }
+    setCompetitionSaving(true);
+    if (existing.length) {
+      const { error } = await supabase.from("competition_matches").delete().eq("competition_id", competition.id);
+      if (error) {
+        setCompetitionSaving(false);
+        alert("Errore rimozione vecchio calendario:\n" + error.message);
+        return;
+      }
+    }
+    const fixtures = buildRoundRobin(teams.map((team) => team.id)).map((match) => ({ ...match, competition_id: competition.id, status: "Programmata" }));
+    const { data, error } = await supabase.from("competition_matches").insert(fixtures).select("id, competition_id, round_number, phase, home_team_id, away_team_id, match_date, match_time, home_score, away_score, status, notes");
+    setCompetitionSaving(false);
+    if (error) {
+      alert("Errore generazione calendario:\n" + error.message);
+      return;
+    }
+    setCompetitionMatches((current) => [...current.filter((match) => match.competition_id !== competition.id), ...((data || []) as CompetitionMatch[])]);
+  }
+
+  async function addTournamentMatch(competition: Competition) {
+    if (!isAdmin || !manualMatchOpponentId) {
+      alert("Scegli l’avversario.");
+      return;
+    }
+    const homeTeam = competitionTeams.find((team) => team.competition_id === competition.id && team.is_calcio_totale);
+    if (!homeTeam) return;
+    const round = Number(manualMatchRound);
+    if (!Number.isInteger(round) || round < 1 || round > 99) {
+      alert("Inserisci una giornata valida.");
+      return;
+    }
+    const { data, error } = await supabase.from("competition_matches").insert({
+      competition_id: competition.id,
+      phase: manualMatchPhase,
+      round_number: round,
+      home_team_id: homeTeam.id,
+      away_team_id: manualMatchOpponentId,
+      match_date: manualMatchDate || null,
+      match_time: manualMatchTime || null,
+      status: "Programmata",
+    }).select("id, competition_id, round_number, phase, home_team_id, away_team_id, match_date, match_time, home_score, away_score, status, notes").single();
+    if (error || !data) {
+      alert("Errore creazione partita:\n" + (error?.message || "Partita non creata."));
+      return;
+    }
+    setCompetitionMatches((current) => [...current, data as CompetitionMatch]);
+    setManualMatchOpponentId("");
+    setManualMatchDate("");
+    setManualMatchTime("");
+  }
+
+  async function saveCompetitionMatch(match: CompetitionMatch, homeScore: string, awayScore: string) {
+    if (!isAdmin) return;
+    const home = homeScore === "" ? null : Number(homeScore);
+    const away = awayScore === "" ? null : Number(awayScore);
+    if ((home !== null && (!Number.isInteger(home) || home < 0 || home > 99)) || (away !== null && (!Number.isInteger(away) || away < 0 || away > 99))) {
+      alert("I risultati devono essere numeri da 0 a 99.");
+      return;
+    }
+    const status = home !== null && away !== null ? "Conclusa" : "Programmata";
+    const { data, error } = await supabase.from("competition_matches").update({ home_score: home, away_score: away, status }).eq("id", match.id).select("id, competition_id, round_number, phase, home_team_id, away_team_id, match_date, match_time, home_score, away_score, status, notes").single();
+    if (error || !data) {
+      alert("Errore salvataggio risultato:\n" + (error?.message || "Risultato non aggiornato."));
+      return;
+    }
+    setCompetitionMatches((current) => current.map((item) => item.id === match.id ? data as CompetitionMatch : item));
+  }
+
+  useEffect(() => {
+    if (activeSection === "competitions") void loadCompetitions();
+  }, [activeSection, loadCompetitions]);
 
   const isPlayer = Boolean(sessionPlayerId) && !isAdmin;
   const visibleMenu = isAdmin
     ? menu
     : isPlayer
       ? menu.filter((item) =>
-          ["dashboard", "presences", "events", "calendar", "votes", "mvp", "stats"].includes(item.id)
+          ["dashboard", "presences", "events", "calendar", "competitions", "votes", "mvp", "stats"].includes(item.id)
         )
       : menu.filter((item) =>
           ["dashboard", "events", "votes", "mvp"].includes(item.id)
@@ -2121,6 +2317,32 @@ export default function Home() {
       .filter((row) => row.appearances || row.goals || row.assists || row.yellow || row.red || row.mvp || row.mvs)
       .sort((a, b) => b.appearances - a.appearances || a.player.name.localeCompare(b.player.name));
   }, [eventReportHistoryMatches, matchDiscipline, matchPlayerStats, matchRatings, matchReports, players]);
+  const selectedCompetition = selectedCompetitionId
+    ? competitions.find((competition) => competition.id === selectedCompetitionId) || null
+    : null;
+  const selectedCompetitionTeams = selectedCompetition
+    ? competitionTeams.filter((team) => team.competition_id === selectedCompetition.id)
+    : [];
+  const selectedCompetitionMatches = selectedCompetition
+    ? competitionMatches.filter((match) => match.competition_id === selectedCompetition.id).sort((a, b) => a.round_number - b.round_number || a.phase.localeCompare(b.phase))
+    : [];
+  const selectedCompetitionStandings = useMemo(() => selectedCompetitionTeams.map((team) => {
+    const totals = { points: 0, played: 0, wins: 0, draws: 0, losses: 0, goalsFor: 0, goalsAgainst: 0 };
+    selectedCompetitionMatches.filter((match) => match.home_score !== null && match.away_score !== null).forEach((match) => {
+      const isHome = match.home_team_id === team.id;
+      const isAway = match.away_team_id === team.id;
+      if (!isHome && !isAway) return;
+      const scored = isHome ? match.home_score! : match.away_score!;
+      const conceded = isHome ? match.away_score! : match.home_score!;
+      totals.played += 1;
+      totals.goalsFor += scored;
+      totals.goalsAgainst += conceded;
+      if (scored > conceded) { totals.wins += 1; totals.points += 3; }
+      else if (scored === conceded) { totals.draws += 1; totals.points += 1; }
+      else totals.losses += 1;
+    });
+    return { team, ...totals, difference: totals.goalsFor - totals.goalsAgainst };
+  }).sort((a, b) => b.points - a.points || b.difference - a.difference || b.goalsFor - a.goalsFor || a.team.name.localeCompare(b.team.name)), [selectedCompetitionMatches, selectedCompetitionTeams]);
 
   // =========================================================
   // RENDER
@@ -3560,117 +3782,38 @@ export default function Home() {
 
         {activeSection === "competitions" && (
           <div>
-
             <PageHeader
               eyebrow="CALCIO TOTALE"
               title="🏆 Competizioni"
-              description="Gestisci tornei, campionati e coppe."
+              description="Campionati ufficiali con andata e ritorno, più Torneo Serale a fasi."
             />
 
-            <div className="mb-8 rounded-3xl border border-slate-800 bg-slate-900 p-7">
+            {isAdmin && <section className="mb-8 rounded-3xl border border-emerald-500/25 bg-slate-900 p-5 sm:p-7">
+              <h3 className="text-xl font-black">➕ Crea competizione</h3>
+              <div className="mt-5 grid gap-4 md:grid-cols-3">
+                <Input label="Nome" value={competitionName} onChange={setCompetitionName} placeholder={competitionFormat === "Torneo Serale" ? "Es. Torneo Serale" : "Es. ELUDO Stagione 2026"} />
+                <div><label className="mb-2 block text-sm font-semibold">Gestione</label><select value={competitionFormat} onChange={(event) => setCompetitionFormat(event.target.value as "Campionato" | "Torneo Serale")} className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3"><option value="Campionato">Campionato ufficiale — andata e ritorno</option><option value="Torneo Serale">Torneo Serale — girone e fasi finali</option></select></div>
+                {competitionFormat === "Campionato" ? <div><label className="mb-2 block text-sm font-semibold">Competizione ufficiale</label><select value={competitionArea} onChange={(event) => setCompetitionArea(event.target.value as CompetitionArea)} className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3">{officialCompetitionAreas.map((area) => <option key={area}>{area}</option>)}</select></div> : <div><label className="mb-2 block text-sm font-semibold">Tipo</label><select value={competitionType} onChange={(event) => setCompetitionType(event.target.value)} className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3"><option>Torneo</option><option>Cup</option><option>Amichevole</option></select></div>}
+              </div>
+              <button type="button" disabled={competitionSaving} onClick={() => void addCompetition()} className="mt-5 rounded-xl bg-emerald-500 px-6 py-3 font-black text-slate-950 disabled:opacity-60">🏆 Crea competizione</button>
+            </section>}
 
-              <h3 className="text-xl font-bold">
-                ➕ Nuova competizione
-              </h3>
-
-              <div className="mt-5 grid gap-5 md:grid-cols-2">
-
-                <Input
-                  label="Nome competizione"
-                  value={competitionName}
-                  onChange={setCompetitionName}
-                  placeholder="Es. BIG CUP"
-                />
-
-                <div>
-                  <label className="mb-2 block text-sm font-semibold">
-                    Tipo
-                  </label>
-
-                  <select
-                    value={competitionType}
-                    onChange={(e) =>
-                      setCompetitionType(e.target.value)
-                    }
-                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3"
-                  >
-                    <option>Torneo</option>
-                    <option>Campionato</option>
-                    <option>Cup</option>
-                    <option>Amichevole</option>
-                    <option>Lega</option>
-                  </select>
-
-                </div>
-
+            {competitionLoading ? <Loading /> : competitions.length === 0 ? <EmptyState icon="🏆" title="Nessuna competizione" text="Gli Admin possono creare il primo campionato o Torneo Serale." /> : <>
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {competitions.map((competition) => <button type="button" key={competition.id} onClick={() => setSelectedCompetitionId(selectedCompetitionId === competition.id ? null : competition.id)} className={(selectedCompetitionId === competition.id ? "border-emerald-400 bg-emerald-500/10" : "border-slate-800 bg-slate-900 hover:border-slate-600") + " rounded-2xl border p-5 text-left transition"}>
+                  <div className="flex items-start justify-between gap-3"><span className="text-3xl">{competition.format === "Torneo Serale" ? "🌙" : "🏆"}</span><span className={(competition.status === "Attiva" ? "bg-emerald-500/15 text-emerald-300" : "bg-slate-800 text-slate-400") + " rounded-lg px-2 py-1 text-xs font-black"}>{competition.status}</span></div>
+                  <h3 className="mt-4 text-xl font-black">{competition.name}</h3><p className="mt-1 text-sm text-slate-400">{competition.format === "Torneo Serale" ? "Torneo Serale · fasi libere" : (competition.competition_area || "Campionato") + " · Andata e ritorno"}</p>
+                </button>)}
               </div>
 
-              <button
-                onClick={addCompetition}
-                className="mt-5 rounded-xl bg-emerald-500 px-6 py-3 font-bold text-slate-950"
-              >
-                🏆 Crea competizione
-              </button>
+              {selectedCompetition && <section className="mt-8 rounded-3xl border border-slate-800 bg-slate-900 p-5 sm:p-7">
+                <div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-300">{selectedCompetition.competition_area === "TORNEO_SERALE" ? "Torneo Serale" : selectedCompetition.competition_area}</p><h3 className="mt-1 text-2xl font-black">{selectedCompetition.name}</h3><p className="mt-1 text-sm text-slate-400">{selectedCompetition.format === "Campionato" ? "Calendario all’italiana: andata e ritorno, 3 punti per vittoria." : "Aggiungi giornate del girone e poi le fasi finali che vuoi."}</p></div>{isAdmin && <button type="button" onClick={() => void toggleCompetition(selectedCompetition)} className="rounded-xl border border-slate-700 px-4 py-2 text-sm font-bold text-slate-300 hover:bg-slate-800">{selectedCompetition.status === "Attiva" ? "⏹️ Concludi" : "▶️ Riattiva"}</button>}</div>
 
-            </div>
+                {isAdmin && <div className="mt-6 rounded-2xl bg-slate-950 p-4"><p className="font-black">Squadre partecipanti</p><div className="mt-3 flex flex-wrap gap-2">{selectedCompetitionTeams.map((team) => <span key={team.id} className={(team.is_calcio_totale ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200" : "border-slate-700 text-slate-300") + " rounded-lg border px-3 py-2 text-sm font-bold"}>{team.name}</span>)}</div><div className="mt-4 flex flex-col gap-2 sm:flex-row"><input value={newCompetitionTeamName} onChange={(event) => setNewCompetitionTeamName(event.target.value)} placeholder="Nome avversario" className="min-h-11 flex-1 rounded-xl border border-slate-700 bg-slate-900 px-4 text-white" /><button type="button" onClick={() => void addCompetitionTeam(selectedCompetition)} className="min-h-11 rounded-xl border border-emerald-500/40 px-4 font-bold text-emerald-300 hover:bg-emerald-500/10">➕ Aggiungi squadra</button></div></div>}
 
-            {competitions.length === 0 ? (
-              <EmptyState
-                icon="🏆"
-                title="Nessuna competizione"
-                text="Crea la prima competizione."
-              />
-            ) : (
-              <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-
-                {competitions.map((competition) => (
-                  <div
-                    key={competition.id}
-                    className="rounded-2xl border border-slate-800 bg-slate-900 p-6"
-                  >
-
-                    <div className="flex items-start justify-between">
-
-                      <div className="text-4xl">
-                        🏆
-                      </div>
-
-                      <span
-                        className={`rounded-lg px-3 py-1 text-xs font-bold ${
-                          competition.status === "Attiva"
-                            ? "bg-emerald-500/10 text-emerald-400"
-                            : "bg-slate-800 text-slate-400"
-                        }`}
-                      >
-                        {competition.status}
-                      </span>
-
-                    </div>
-
-                    <h3 className="mt-5 text-xl font-bold">
-                      {competition.name}
-                    </h3>
-
-                    <p className="mt-2 text-slate-500">
-                      {competition.type}
-                    </p>
-
-                    <button
-                      onClick={() =>
-                        toggleCompetition(competition.id)
-                      }
-                      className="mt-5 w-full rounded-xl border border-slate-700 px-4 py-3 text-sm hover:bg-slate-800"
-                    >
-                      {competition.status === "Attiva"
-                        ? "⏹️ Concludi"
-                        : "▶️ Riattiva"}
-                    </button>
-
-                  </div>
-                ))}
-
-              </div>
-            )}
+                {selectedCompetition.format === "Campionato" ? <>{isAdmin && <button type="button" disabled={competitionSaving} onClick={() => void generateLeagueCalendar(selectedCompetition)} className="mt-5 rounded-xl bg-emerald-500 px-5 py-3 font-black text-slate-950 disabled:opacity-60">🗓️ Genera calendario andata e ritorno</button>}<CompetitionStandings rows={selectedCompetitionStandings} /><CompetitionMatchesTable matches={selectedCompetitionMatches} teams={selectedCompetitionTeams} isAdmin={isAdmin} onSave={(match, home, away) => void saveCompetitionMatch(match, home, away)} /></> : <>{isAdmin && <div className="mt-6 grid gap-3 rounded-2xl bg-slate-950 p-4 sm:grid-cols-2 lg:grid-cols-5"><div><label className="mb-1 block text-xs font-bold text-slate-400">Fase</label><select value={manualMatchPhase} onChange={(event) => setManualMatchPhase(event.target.value)} className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2">{tournamentPhases.map((phase) => <option key={phase}>{phase}</option>)}</select></div><Input label="Giornata" value={manualMatchRound} onChange={setManualMatchRound} type="number" /><div><label className="mb-1 block text-xs font-bold text-slate-400">Avversario</label><select value={manualMatchOpponentId} onChange={(event) => setManualMatchOpponentId(event.target.value)} className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2"><option value="">Seleziona</option>{selectedCompetitionTeams.filter((team) => !team.is_calcio_totale).map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</select></div><Input label="Data" value={manualMatchDate} onChange={setManualMatchDate} type="date" /><div className="flex items-end"><button type="button" onClick={() => void addTournamentMatch(selectedCompetition)} className="w-full rounded-xl bg-emerald-500 px-4 py-3 font-black text-slate-950">➕ Aggiungi partita</button></div></div>}<CompetitionMatchesTable matches={selectedCompetitionMatches} teams={selectedCompetitionTeams} isAdmin={isAdmin} onSave={(match, home, away) => void saveCompetitionMatch(match, home, away)} /></>}
+              </section>}
+            </>}
 
           </div>
         )}
@@ -4511,6 +4654,21 @@ function QuickButton({
       </span>
     </button>
   );
+}
+
+function CompetitionStandings({ rows }: { rows: Array<{ team: CompetitionTeam; points: number; played: number; wins: number; draws: number; losses: number; goalsFor: number; goalsAgainst: number; difference: number }> }) {
+  return <section className="mt-7"><div className="flex items-center justify-between"><h4 className="text-lg font-black">📊 Classifica</h4><span className="text-xs text-slate-500">3 punti vittoria · 1 pareggio</span></div><div className="mt-3 overflow-x-auto rounded-2xl border border-slate-800"><table className="min-w-[700px] w-full text-left text-sm"><thead className="bg-slate-950 text-xs text-slate-400"><tr><th className="px-3 py-3">#</th><th className="px-3 py-3">Squadra</th><th className="px-3 py-3 text-center">P</th><th className="px-3 py-3 text-center">V</th><th className="px-3 py-3 text-center">N</th><th className="px-3 py-3 text-center">S</th><th className="px-3 py-3 text-center">GF</th><th className="px-3 py-3 text-center">GS</th><th className="px-3 py-3 text-center">DR</th><th className="px-3 py-3 text-center">PT</th></tr></thead><tbody>{rows.map((row, index) => <tr key={row.team.id} className="border-t border-slate-800"><td className="px-3 py-3 font-black text-slate-400">{index + 1}</td><td className={(row.team.is_calcio_totale ? "text-emerald-300" : "text-white") + " px-3 py-3 font-bold"}>{row.team.name}</td><td className="px-3 py-3 text-center">{row.played}</td><td className="px-3 py-3 text-center">{row.wins}</td><td className="px-3 py-3 text-center">{row.draws}</td><td className="px-3 py-3 text-center">{row.losses}</td><td className="px-3 py-3 text-center">{row.goalsFor}</td><td className="px-3 py-3 text-center">{row.goalsAgainst}</td><td className="px-3 py-3 text-center">{row.difference > 0 ? "+" : ""}{row.difference}</td><td className="px-3 py-3 text-center font-black text-emerald-300">{row.points}</td></tr>)}</tbody></table></div></section>;
+}
+
+function CompetitionMatchScoreInputs({ match, onSave }: { match: CompetitionMatch; onSave: (match: CompetitionMatch, homeScore: string, awayScore: string) => void }) {
+  const [home, setHome] = useState(match.home_score === null ? "" : String(match.home_score));
+  const [away, setAway] = useState(match.away_score === null ? "" : String(match.away_score));
+  return <span className="inline-flex items-center gap-1"><input aria-label="Gol casa" value={home} onChange={(event) => setHome(event.target.value)} onBlur={() => onSave(match, home, away)} type="number" min="0" max="99" className="w-12 rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-center" /><span>-</span><input aria-label="Gol ospiti" value={away} onChange={(event) => setAway(event.target.value)} onBlur={() => onSave(match, home, away)} type="number" min="0" max="99" className="w-12 rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-center" /></span>;
+}
+
+function CompetitionMatchesTable({ matches, teams, isAdmin, onSave }: { matches: CompetitionMatch[]; teams: CompetitionTeam[]; isAdmin: boolean; onSave: (match: CompetitionMatch, homeScore: string, awayScore: string) => void }) {
+  const teamName = (id: string) => teams.find((team) => team.id === id)?.name || "Squadra";
+  return <section className="mt-7"><h4 className="text-lg font-black">🗓️ Calendario e risultati</h4>{matches.length === 0 ? <p className="mt-3 rounded-2xl bg-slate-950 p-5 text-sm text-slate-400">Nessuna partita inserita.</p> : <div className="mt-3 overflow-x-auto rounded-2xl border border-slate-800"><table className="min-w-[780px] w-full text-left text-sm"><thead className="bg-slate-950 text-xs text-slate-400"><tr><th className="px-3 py-3">Fase</th><th className="px-3 py-3">Giornata</th><th className="px-3 py-3">Partita</th><th className="px-3 py-3 text-center">Risultato</th><th className="px-3 py-3">Stato</th></tr></thead><tbody>{matches.map((match) => <tr key={match.id} className="border-t border-slate-800"><td className="px-3 py-3 font-bold text-emerald-300">{match.phase}</td><td className="px-3 py-3">{match.round_number}</td><td className="px-3 py-3 font-bold">{teamName(match.home_team_id)} <span className="text-slate-500">vs</span> {teamName(match.away_team_id)}{match.match_date && <p className="mt-1 text-xs font-normal text-slate-500">{match.match_date}{match.match_time ? " · " + match.match_time.slice(0, 5) : ""}</p>}</td><td className="px-3 py-3 text-center">{isAdmin ? <CompetitionMatchScoreInputs match={match} onSave={onSave} /> : (match.home_score === null || match.away_score === null ? "—" : match.home_score + " - " + match.away_score)}</td><td className="px-3 py-3"><span className={(match.status === "Conclusa" ? "text-emerald-300" : "text-slate-400") + " text-xs font-bold"}>{match.status}</span></td></tr>)}</tbody></table></div>}</section>;
 }
 
 function Input({
