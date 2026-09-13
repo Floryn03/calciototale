@@ -165,42 +165,6 @@ const playerPositionGroups = [
   { id: "ATT (PD)", label: "⚽ ATT (PD)" },
 ];
 
-// Ordine scelto dall'Admin per la lista completa delle presenze.
-const presencePlayerOrder = [
-  "er_kinghe69",
-  "CraZy_DocToR_567",
-  "Principato96",
-  "IISupremo_",
-  "titoutc",
-  "erifede03",
-  "SGS_CotolettaZZZ",
-  "messicanoVip881",
-  "infamo241us2004",
-  "Kekko_Modder-_-",
-  "Manu_King1004",
-  "Savot_Official",
-  "Jok3rXVII",
-  "DGNox_4",
-  "Dott_Friedlander",
-  "Simply_ViRTuAL",
-  "HyweeS-KTM",
-  "samuilpro4",
-  "Xx_Formaggino_x93",
-  "Borto9",
-  "erfranz27",
-  "Veleno_991",
-  "GLDPale99",
-  "MANCIO_1997",
-  "TEAM_VSfong7",
-  "leonardogiorg534",
-  "XAxelyz",
-  "floryn03",
-  "XxAntonio_1902xX",
-  "XGod_VegetaX",
-  "Luigi-JUVE-2012",
-  "iTs_Guerrie_-",
-];
-
 function getStatsRoleGroup(position: string) {
   return statsRoleGroups.find((group) => group.matches(position))?.id || "others";
 }
@@ -1841,10 +1805,10 @@ export default function Home() {
   const presencePlayers = isPlayer
     ? players.filter((player) => player.id === sessionPlayerId)
     : players;
-  const presenceDepartments = [{
-    title: "👥 CT | GIOCATORI",
-    positions: playerPositionGroups.map((group) => group.id),
-  }];
+  const presenceDepartments = playerPositionGroups.map((group) => ({
+    title: group.label,
+    positions: [group.id],
+  }));
 
   // =========================================================
   // RENDER
@@ -2633,13 +2597,10 @@ export default function Home() {
                         (presence?.status === "Presente" &&
                           presence.event_role === presenceRoleFilter))
                     );
-                  }).sort((a, b) => {
-                    const aOrder = presencePlayerOrder.indexOf(a.name);
-                    const bOrder = presencePlayerOrder.indexOf(b.name);
-                    return (aOrder === -1 ? Number.MAX_SAFE_INTEGER : aOrder)
-                      - (bOrder === -1 ? Number.MAX_SAFE_INTEGER : bOrder)
-                      || a.name.localeCompare(b.name, "it");
-                  });
+                  }).sort((a, b) =>
+                    (a.position_rank || 999) - (b.position_rank || 999)
+                    || a.name.localeCompare(b.name, "it")
+                  );
                   if (departmentPlayers.length === 0) return null;
 
                   return (
