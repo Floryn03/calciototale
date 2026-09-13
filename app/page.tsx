@@ -1969,6 +1969,65 @@ export default function Home() {
     }
   }
 
+  async function resetEventReport(event: EventItem) {
+    if (!isAdmin || eventReportSaving) return;
+    if (!window.confirm(`Azzerare completamente il referto di “${event.name}”?\n\nSaranno rimossi formazione, voti, gol, assist, cartellini, MVP, MVS e risultato solo di questa partita.`)) return;
+
+    setEventReportSaving(true);
+    try {
+      const [ratingsResult, statsResult] = await Promise.all([
+        supabase.from("match_ratings").select("player_id").eq("match_id", event.id),
+        supabase.from("match_player_stats").select("player_id").eq("match_id", event.id),
+      ]);
+      if (ratingsResult.error || statsResult.error) throw ratingsResult.error || statsResult.error;
+
+      for (const item of ratingsResult.data || []) {
+        const { data, error } = await supabase.functions.invoke("manage-votazioni", {
+          body: { action: "delete_rating", match_id: event.id, player_id: item.player_id },
+        });
+        if (error || data?.error) throw new Error(data?.error || error?.message || "Errore azzeramento voto.");
+      }
+      for (const item of statsResult.data || []) {
+        const { data, error } = await supabase.functions.invoke("manage-votazioni", {
+          body: { action: "save_match_stats", match_id: event.id, player_id: item.player_id, goals: 0, assists: 0 },
+        });
+        if (error || data?.error) throw new Error(data?.error || error?.message || "Errore azzeramento gol e assist.");
+      }
+
+      const [disciplineResult, lineupsResult, reportResult] = await Promise.all([
+        supabase.from("match_player_discipline").delete().eq("match_id", event.id),
+        supabase.from("event_report_lineups").delete().eq("event_id", event.id),
+        supabase.from("match_reports").delete().eq("match_id", event.id),
+      ]);
+      if (disciplineResult.error || lineupsResult.error || reportResult.error) throw disciplineResult.error || lineupsResult.error || reportResult.error;
+
+      setEventReportDrafts(Object.fromEntries(eventReportPositions.map((position, index) => [index + 1, {
+        position,
+        player_id: "",
+        rating: "",
+        goals: "0",
+        assists: "0",
+        yellow: "0",
+        red: "0",
+      }])));
+      setEventReportOpponent("");
+      setEventReportTeamScore("0");
+      setEventReportOpponentScore("0");
+      setEventReportNote("");
+      setEventReportMvpPlayerId("");
+      setEventReportMvsPlayerId("");
+      setMatchReports((current) => current.filter((item) => item.match_id !== event.id));
+      setMatchRatings((current) => current.filter((item) => item.match_id !== event.id));
+      setMatchPlayerStats((current) => current.filter((item) => item.match_id !== event.id));
+      setMatchDiscipline((current) => current.filter((item) => item.match_id !== event.id));
+      alert("Referto azzerato correttamente.");
+    } catch (error) {
+      alert("Errore azzeramento referto:\n" + (error instanceof Error ? error.message : "Dati non rimossi."));
+    } finally {
+      setEventReportSaving(false);
+    }
+  }
+
   // =========================================================
   // COMPETITIONS
   // =========================================================
@@ -2702,7 +2761,7 @@ export default function Home() {
                       </div>
                     </div>
 
-                    {isAdmin && <div className="mt-5 flex justify-end"><button type="button" disabled={eventReportSaving} onClick={() => void saveEventReport(selectedEventReport)} className="rounded-xl bg-emerald-500 px-5 py-3 font-bold text-slate-950 disabled:opacity-60">{eventReportSaving ? "Salvataggio..." : "💾 Salva referto"}</button></div>}
+                    {isAdmin && <div className="mt-5 flex flex-wrap justify-end gap-3"><button type="button" disabled={eventReportSaving} onClick={() => void resetEventReport(selectedEventReport)} className="rounded-xl border border-red-500/40 px-5 py-3 font-bold text-red-300 hover:bg-red-500/10 disabled:opacity-60">🗑️ Azzera referto</button><button type="button" disabled={eventReportSaving} onClick={() => void saveEventReport(selectedEventReport)} className="rounded-xl bg-emerald-500 px-5 py-3 font-bold text-slate-950 disabled:opacity-60">{eventReportSaving ? "Salvataggio..." : "💾 Salva referto"}</button></div>}
                   </>
                 )}
               </section>
