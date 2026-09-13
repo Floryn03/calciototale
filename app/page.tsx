@@ -199,8 +199,8 @@ const positions = [
 // Ruoli validi per la singola presenza, indipendenti dal ruolo fisso del giocatore.
 const presenceRoles: PresenceRole[] = ["POR", "DCD", "DCC", "DCS", "ES", "ED", "CCS", "CDC", "CCD", "ATT"];
 
-// Il referto ha una sola voce ATT, come richiesto: nessuna distinzione ATT (PS) / ATT (PD).
-const eventReportPositions: EventReportPosition[] = ["POR", "DCC", "DCS", "DCD", "CDC", "CCS", "CCD", "ES", "ED", "ATT"];
+// Il referto ha due punte ATT selezionabili separatamente, senza distinzione ATT (PS) / ATT (PD).
+const eventReportPositions: EventReportPosition[] = ["POR", "DCC", "DCS", "DCD", "CDC", "CCS", "CCD", "ES", "ED", "ATT", "ATT"];
 const officialCompetitionAreas: CompetitionArea[] = ["ELUDO", "VPG", "VPC", "PROCLUBBER", "LND", "ALLSTARS", "VPL", "FVPA"];
 const tournamentPhases = ["Girone", "Sedicesimi", "Ottavi", "Quarti", "Semifinale", "Finale"];
 
