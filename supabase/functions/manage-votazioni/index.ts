@@ -321,7 +321,19 @@ Deno.serve(async (request: Request) => {
         .eq("player_id", body.player_id)
         .eq("status", "Presente")
         .maybeSingle();
-      if (!presence) return json({ error: "Puoi votare solo un giocatore presente alla partita." }, 400);
+
+      // Nel referto l'Admin può registrare la prestazione anche di un giocatore
+      // inserito nella formazione, se la presenza iniziale è stata segnata per errore.
+      // Non abilita altri giocatori: deve essere presente oppure nella lista del referto.
+      const { data: reportLineup } = presence
+        ? { data: { id: "presence" } }
+        : await client
+            .from("event_report_lineups")
+            .select("id")
+            .eq("event_id", body.match_id)
+            .eq("player_id", body.player_id)
+            .maybeSingle();
+      if (!reportLineup) return json({ error: "Puoi registrare dati solo per un giocatore presente o inserito nel referto della partita." }, 400);
 
       const weekStart = weekStartFromDate(match.event_date);
 
