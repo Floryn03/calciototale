@@ -69,6 +69,27 @@ type MatchReport = {
   opponent_score: number;
   note: string | null;
   match_mvp_player_id: string | null;
+  match_mvs_player_id: string | null;
+};
+
+type EventReportLineup = {
+  id?: string;
+  event_id: string;
+  slot_order: number;
+  position: EventReportPosition;
+  player_id: string | null;
+};
+
+type EventReportPosition = "POR" | "DCC" | "DCS" | "DCD" | "CDC" | "CCS" | "CCD" | "ES" | "ED" | "ATT";
+
+type EventReportDraft = {
+  position: EventReportPosition;
+  player_id: string;
+  rating: string;
+  goals: string;
+  assists: string;
+  yellow: string;
+  red: string;
 };
 
 type MatchDiscipline = {
@@ -141,6 +162,9 @@ const positions = [
 
 // Ruoli validi per la singola presenza, indipendenti dal ruolo fisso del giocatore.
 const presenceRoles: PresenceRole[] = ["POR", "DCD", "DCC", "DCS", "ES", "ED", "CCS", "CDC", "CCD", "ATT"];
+
+// Il referto ha una sola voce ATT, come richiesto: nessuna distinzione ATT (PS) / ATT (PD).
+const eventReportPositions: EventReportPosition[] = ["POR", "DCC", "DCS", "DCD", "CDC", "CCS", "CCD", "ES", "ED", "ATT"];
 
 const playerPositionGroups = [
   { id: "POR", label: "🧤 POR" },
@@ -294,6 +318,16 @@ export default function Home() {
   const [historyNote, setHistoryNote] = useState("");
   const [historyMvpPlayerId, setHistoryMvpPlayerId] = useState("");
   const [disciplineDrafts, setDisciplineDrafts] = useState<Record<string, { yellow: string; red: string }>>({});
+  const [openEventReportId, setOpenEventReportId] = useState<string | null>(null);
+  const [eventReportLoading, setEventReportLoading] = useState(false);
+  const [eventReportSaving, setEventReportSaving] = useState(false);
+  const [eventReportDrafts, setEventReportDrafts] = useState<Record<number, EventReportDraft>>({});
+  const [eventReportOpponent, setEventReportOpponent] = useState("");
+  const [eventReportTeamScore, setEventReportTeamScore] = useState("0");
+  const [eventReportOpponentScore, setEventReportOpponentScore] = useState("0");
+  const [eventReportNote, setEventReportNote] = useState("");
+  const [eventReportMvpPlayerId, setEventReportMvpPlayerId] = useState("");
+  const [eventReportMvsPlayerId, setEventReportMvsPlayerId] = useState("");
 
   const [loadingPlayers, setLoadingPlayers] = useState(true);
   const [loadingPresences, setLoadingPresences] = useState(true);
@@ -811,7 +845,7 @@ export default function Home() {
   const loadMatchHistory = useCallback(async () => {
     setHistoryLoading(true);
     const [reportsResult, disciplineResult, ratingsResult, presencesResult] = await Promise.all([
-      supabase.from("match_reports").select("match_id, opponent, team_score, opponent_score, note, match_mvp_player_id"),
+      supabase.from("match_reports").select("match_id, opponent, team_score, opponent_score, note, match_mvp_player_id, match_mvs_player_id"),
       supabase.from("match_player_discipline").select("match_id, player_id, yellow_cards, red_cards"),
       supabase.from("match_ratings").select("match_id, player_id, rating"),
       supabase.from("presences").select("event_id, player_id, status, event_role").eq("status", "Presente").not("event_id", "is", null),
@@ -1709,7 +1743,7 @@ export default function Home() {
         match_mvp_player_id: historyMvpPlayerId || null,
         updated_at: new Date().toISOString(),
       }, { onConflict: "match_id" })
-      .select("match_id, opponent, team_score, opponent_score, note, match_mvp_player_id")
+      .select("match_id, opponent, team_score, opponent_score, note, match_mvp_player_id, match_mvs_player_id")
       .single();
 
     setHistorySaving(false);
@@ -1777,6 +1811,165 @@ export default function Home() {
   }
 
   // =========================================================
+  // EVENT REPORT (referto modificabile dentro Eventi)
+  // =========================================================
+
+  async function openEventReport(event: EventItem) {
+    if (openEventReportId === event.id) {
+      setOpenEventReportId(null);
+      return;
+    }
+
+    setOpenEventReportId(event.id);
+    setEventReportLoading(true);
+    window.setTimeout(() => document.getElementById("event-report-panel")?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+    void Promise.all([loadMatchHistory(), loadMatchPlayerStats()]);
+
+    const [lineupsResult, reportResult, ratingsResult, statsResult, disciplineResult] = await Promise.all([
+      supabase.from("event_report_lineups").select("id, event_id, slot_order, position, player_id").eq("event_id", event.id).order("slot_order", { ascending: true }),
+      supabase.from("match_reports").select("match_id, opponent, team_score, opponent_score, note, match_mvp_player_id, match_mvs_player_id").eq("match_id", event.id).maybeSingle(),
+      supabase.from("match_ratings").select("match_id, player_id, rating").eq("match_id", event.id),
+      supabase.from("match_player_stats").select("match_id, player_id, goals, assists").eq("match_id", event.id),
+      supabase.from("match_player_discipline").select("match_id, player_id, yellow_cards, red_cards").eq("match_id", event.id),
+    ]);
+
+    if (lineupsResult.error || reportResult.error || ratingsResult.error || statsResult.error || disciplineResult.error) {
+      console.error("Errore caricamento referto:", lineupsResult.error || reportResult.error || ratingsResult.error || statsResult.error || disciplineResult.error);
+      alert("Errore durante il caricamento del referto.");
+      setEventReportLoading(false);
+      return;
+    }
+
+    const lineups = (lineupsResult.data || []) as EventReportLineup[];
+    const ratings = (ratingsResult.data || []) as MatchRatingRecord[];
+    const stats = (statsResult.data || []) as MatchPlayerStat[];
+    const discipline = (disciplineResult.data || []) as MatchDiscipline[];
+    const existingByOrder = new Map(lineups.map((item) => [item.slot_order, item]));
+
+    setEventReportDrafts(Object.fromEntries(eventReportPositions.map((defaultPosition, index) => {
+      const slotOrder = index + 1;
+      const item = existingByOrder.get(slotOrder);
+      const playerId = item?.player_id || "";
+      const rating = ratings.find((row) => row.player_id === playerId)?.rating;
+      const playerStats = stats.find((row) => row.player_id === playerId);
+      const playerDiscipline = discipline.find((row) => row.player_id === playerId);
+      return [slotOrder, {
+        position: item?.position || defaultPosition,
+        player_id: playerId,
+        rating: rating === undefined ? "" : String(rating),
+        goals: String(playerStats?.goals || 0),
+        assists: String(playerStats?.assists || 0),
+        yellow: String(playerDiscipline?.yellow_cards || 0),
+        red: String(playerDiscipline?.red_cards || 0),
+      }];
+    })));
+
+    const report = reportResult.data as MatchReport | null;
+    setEventReportOpponent(report?.opponent || "");
+    setEventReportTeamScore(String(report?.team_score ?? 0));
+    setEventReportOpponentScore(String(report?.opponent_score ?? 0));
+    setEventReportNote(report?.note || "");
+    setEventReportMvpPlayerId(report?.match_mvp_player_id || "");
+    setEventReportMvsPlayerId(report?.match_mvs_player_id || "");
+    setEventReportLoading(false);
+  }
+
+  function updateEventReportDraft(slotOrder: number, patch: Partial<EventReportDraft>) {
+    setEventReportDrafts((current) => ({
+      ...current,
+      [slotOrder]: { ...current[slotOrder], ...patch },
+    }));
+  }
+
+  async function saveEventReport(event: EventItem) {
+    if (!isAdmin) return;
+    if (!eventReportOpponent.trim()) {
+      alert("Scrivi l’avversario prima di salvare il referto.");
+      return;
+    }
+    const teamScore = Number(eventReportTeamScore);
+    const opponentScore = Number(eventReportOpponentScore);
+    if (!Number.isInteger(teamScore) || teamScore < 0 || teamScore > 99 || !Number.isInteger(opponentScore) || opponentScore < 0 || opponentScore > 99) {
+      alert("Il risultato deve contenere numeri interi da 0 a 99.");
+      return;
+    }
+
+    const rows = eventReportPositions.map((_, index) => ({ slot_order: index + 1, ...eventReportDrafts[index + 1] }));
+    const selectedPlayerIds = rows.map((row) => row.player_id).filter(Boolean);
+    if (new Set(selectedPlayerIds).size !== selectedPlayerIds.length) {
+      alert("Lo stesso giocatore non può comparire due volte nel referto.");
+      return;
+    }
+    if ((eventReportMvpPlayerId && !selectedPlayerIds.includes(eventReportMvpPlayerId)) || (eventReportMvsPlayerId && !selectedPlayerIds.includes(eventReportMvsPlayerId))) {
+      alert("MVP e MVS devono essere giocatori inseriti nel referto.");
+      return;
+    }
+
+    setEventReportSaving(true);
+    try {
+      const { error: reportError } = await supabase.from("match_reports").upsert({
+        match_id: event.id,
+        opponent: eventReportOpponent.trim(),
+        team_score: teamScore,
+        opponent_score: opponentScore,
+        note: eventReportNote.trim() || null,
+        match_mvp_player_id: eventReportMvpPlayerId || null,
+        match_mvs_player_id: eventReportMvsPlayerId || null,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "match_id" });
+      if (reportError) throw reportError;
+
+      const { error: lineupsError } = await supabase.from("event_report_lineups").upsert(
+        rows.map((row) => ({
+          event_id: event.id,
+          slot_order: row.slot_order,
+          position: row.position,
+          player_id: row.player_id || null,
+          updated_at: new Date().toISOString(),
+        })),
+        { onConflict: "event_id,slot_order" }
+      );
+      if (lineupsError) throw lineupsError;
+
+      for (const row of rows) {
+        if (!row.player_id) continue;
+        const yellow = Number(row.yellow || 0);
+        const red = Number(row.red || 0);
+        if (!Number.isInteger(yellow) || yellow < 0 || yellow > 9 || !Number.isInteger(red) || red < 0 || red > 9) {
+          throw new Error("Gialli e rossi devono essere numeri interi da 0 a 9.");
+        }
+
+        const { error: disciplineError } = await supabase.from("match_player_discipline").upsert({
+          match_id: event.id,
+          player_id: row.player_id,
+          yellow_cards: yellow,
+          red_cards: red,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "match_id,player_id" });
+        if (disciplineError) throw disciplineError;
+
+        const goals = Number(row.goals || 0);
+        const assists = Number(row.assists || 0);
+        const rating = row.rating.trim();
+        await supabase.functions.invoke("manage-votazioni", {
+          body: rating
+            ? { action: "save_rating", match_id: event.id, player_id: row.player_id, rating: Number(rating), goals, assists }
+            : { action: "save_match_stats", match_id: event.id, player_id: row.player_id, goals, assists },
+        }).then(({ data, error }) => {
+          if (error || data?.error) throw new Error(data?.error || error?.message || "Errore salvataggio voto.");
+        });
+      }
+
+      await Promise.all([loadMatchHistory(), loadMatchPlayerStats()]);
+      alert("Referto salvato correttamente.");
+    } catch (error) {
+      alert("Errore salvataggio referto:\n" + (error instanceof Error ? error.message : "Dati non aggiornati."));
+    } finally {
+      setEventReportSaving(false);
+    }
+  }
+
+  // =========================================================
   // COMPETITIONS
   // =========================================================
 
@@ -1835,6 +2028,40 @@ export default function Home() {
     { title: "⚡ CT | ESTERNI", positions: ["ES", "ED"] },
     { title: "🔥 CT | ATTACCO", positions: ["ATT (PS)", "ATT (PD)"] },
   ];
+  const selectedEventReport = openEventReportId
+    ? events.find((event) => event.id === openEventReportId) || null
+    : null;
+  const eventReportHistoryMatches = useMemo(
+    () => [...events]
+      .filter((event) => matchReports.some((report) => report.match_id === event.id))
+      .sort((a, b) => `${a.event_date}${a.event_time || ""}`.localeCompare(`${b.event_date}${b.event_time || ""}`))
+      .slice(-8),
+    [events, matchReports]
+  );
+  const eventReportSummaryRows = useMemo(() => {
+    const matchIds = new Set(eventReportHistoryMatches.map((event) => event.id));
+    return players
+      .map((player) => {
+        const ratings = matchRatings.filter((row) => row.player_id === player.id && matchIds.has(row.match_id));
+        const stats = matchPlayerStats.filter((row) => row.player_id === player.id && matchIds.has(row.match_id));
+        const discipline = matchDiscipline.filter((row) => row.player_id === player.id && matchIds.has(row.match_id));
+        const appearances = ratings.length;
+        return {
+          player,
+          ratingsByMatch: new Map(ratings.map((row) => [row.match_id, row.rating])),
+          goals: stats.reduce((total, row) => total + row.goals, 0),
+          assists: stats.reduce((total, row) => total + row.assists, 0),
+          yellow: discipline.reduce((total, row) => total + row.yellow_cards, 0),
+          red: discipline.reduce((total, row) => total + row.red_cards, 0),
+          mvp: matchReports.filter((report) => matchIds.has(report.match_id) && report.match_mvp_player_id === player.id).length,
+          mvs: matchReports.filter((report) => matchIds.has(report.match_id) && report.match_mvs_player_id === player.id).length,
+          appearances,
+          average: appearances ? ratings.reduce((total, row) => total + row.rating, 0) / appearances : null,
+        };
+      })
+      .filter((row) => row.appearances || row.goals || row.assists || row.yellow || row.red || row.mvp || row.mvs)
+      .sort((a, b) => b.appearances - a.appearances || a.player.name.localeCompare(b.player.name));
+  }, [eventReportHistoryMatches, matchDiscipline, matchPlayerStats, matchRatings, matchReports, players]);
 
   // =========================================================
   // RENDER
@@ -2187,8 +2414,10 @@ export default function Home() {
             PLAYERS
         ===================================================== */}
 
-        {activeSection === "players" && (
+        {(activeSection === "players" || (activeSection === "events" && selectedEventReport)) && (
           <div>
+
+          {activeSection === "players" && <>
 
             <PageHeader
               eyebrow="CALCIO TOTALE"
@@ -2404,6 +2633,79 @@ export default function Home() {
                   </section>
                 ))}
               </div>
+            )}
+
+          </>}
+
+            {selectedEventReport && (
+              <section id="event-report-panel" className="mt-8 rounded-3xl border border-sky-500/25 bg-slate-900 p-4 sm:p-7">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.18em] text-sky-300">Referto partita</p>
+                    <h3 className="mt-1 text-xl font-black sm:text-2xl">{selectedEventReport.name}</h3>
+                    <p className="mt-1 text-sm text-slate-400">{selectedEventReport.event_date}{selectedEventReport.event_time ? " · " + selectedEventReport.event_time.slice(0, 5) : ""}</p>
+                  </div>
+                  {isAdmin ? <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-bold text-emerald-300">Modifica Admin</span> : <span className="rounded-full bg-slate-800 px-3 py-1 text-xs font-bold text-slate-300">Sola lettura</span>}
+                </div>
+
+                {eventReportLoading ? (
+                  <p className="py-10 text-center text-slate-400">Caricamento referto...</p>
+                ) : (
+                  <>
+                    <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                      <Input disabled={!isAdmin} label="Avversario" value={eventReportOpponent} onChange={setEventReportOpponent} placeholder="Es. FC Avversari" />
+                      <Input disabled={!isAdmin} label="Gol Calcio Totale" value={eventReportTeamScore} onChange={setEventReportTeamScore} type="number" />
+                      <Input disabled={!isAdmin} label="Gol avversario" value={eventReportOpponentScore} onChange={setEventReportOpponentScore} type="number" />
+                      <Input disabled={!isAdmin} label="Nota partita" value={eventReportNote} onChange={setEventReportNote} placeholder="Es. Girone A" />
+                    </div>
+
+                    <div className="mt-6 overflow-x-auto rounded-2xl border border-slate-800">
+                      <table className="min-w-[1050px] w-full text-left text-sm">
+                        <thead className="bg-slate-950 text-xs uppercase tracking-wide text-slate-400">
+                          <tr>
+                            <th className="px-3 py-3">Ruolo</th><th className="px-3 py-3">ID giocatore</th><th className="px-3 py-3">Voto</th><th className="px-3 py-3">Gol</th><th className="px-3 py-3">Assist</th><th className="px-3 py-3">Gialli</th><th className="px-3 py-3">Rossi</th><th className="px-3 py-3">MVP</th><th className="px-3 py-3">MVS</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {eventReportPositions.map((_, index) => {
+                            const slotOrder = index + 1;
+                            const draft = eventReportDrafts[slotOrder];
+                            if (!draft) return null;
+                            const inputClass = "w-20 rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 text-center text-white disabled:cursor-not-allowed disabled:opacity-80";
+                            return (
+                              <tr key={slotOrder} className="border-t border-slate-800">
+                                <td className="px-3 py-2"><select disabled={!isAdmin} value={draft.position} onChange={(e) => updateEventReportDraft(slotOrder, { position: e.target.value as EventReportPosition })} className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 font-bold text-emerald-300 disabled:cursor-not-allowed">{eventReportPositions.map((role) => <option key={role} value={role}>{role}</option>)}</select></td>
+                                <td className="px-3 py-2"><select disabled={!isAdmin} value={draft.player_id} onChange={(e) => updateEventReportDraft(slotOrder, { player_id: e.target.value })} className="min-w-56 rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 disabled:cursor-not-allowed"><option value="">— Seleziona ID —</option>{[...players].sort((a, b) => a.name.localeCompare(b.name)).map((player) => <option key={player.id} value={player.id}>{player.name}{player.psn_id && player.psn_id !== player.name ? " · " + player.psn_id : ""}</option>)}</select></td>
+                                <td className="px-3 py-2"><input disabled={!isAdmin} value={draft.rating} onChange={(e) => updateEventReportDraft(slotOrder, { rating: e.target.value })} className={inputClass} type="number" min="1" max="10" step="0.1" placeholder="—" /></td>
+                                <td className="px-3 py-2"><input disabled={!isAdmin} value={draft.goals} onChange={(e) => updateEventReportDraft(slotOrder, { goals: e.target.value })} className={inputClass} type="number" min="0" max="99" /></td>
+                                <td className="px-3 py-2"><input disabled={!isAdmin} value={draft.assists} onChange={(e) => updateEventReportDraft(slotOrder, { assists: e.target.value })} className={inputClass} type="number" min="0" max="99" /></td>
+                                <td className="px-3 py-2"><input disabled={!isAdmin} value={draft.yellow} onChange={(e) => updateEventReportDraft(slotOrder, { yellow: e.target.value })} className={inputClass} type="number" min="0" max="9" /></td>
+                                <td className="px-3 py-2"><input disabled={!isAdmin} value={draft.red} onChange={(e) => updateEventReportDraft(slotOrder, { red: e.target.value })} className={inputClass} type="number" min="0" max="9" /></td>
+                                <td className="px-3 py-2"><input disabled={!isAdmin || !draft.player_id} checked={eventReportMvpPlayerId === draft.player_id && Boolean(draft.player_id)} onChange={() => setEventReportMvpPlayerId(eventReportMvpPlayerId === draft.player_id ? "" : draft.player_id)} className="h-5 w-5 accent-emerald-400" type="radio" name="event-report-mvp" /></td>
+                                <td className="px-3 py-2"><input disabled={!isAdmin || !draft.player_id} checked={eventReportMvsPlayerId === draft.player_id && Boolean(draft.player_id)} onChange={() => setEventReportMvsPlayerId(eventReportMvsPlayerId === draft.player_id ? "" : draft.player_id)} className="h-5 w-5 accent-sky-400" type="radio" name="event-report-mvs" /></td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                    <p className="mt-3 text-xs text-slate-500">Il ruolo qui è solo quello del referto della partita: non modifica il ruolo originario del giocatore.</p>
+
+                    <div className="mt-8 border-t border-slate-800 pt-6">
+                      <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-300">Statistiche individuali</p>
+                      <h4 className="mt-1 text-lg font-black">Riepilogo delle ultime partite registrate</h4>
+                      <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-800">
+                        <table className="min-w-[1000px] w-full text-left text-sm">
+                          <thead className="bg-slate-950 text-xs uppercase tracking-wide text-slate-400"><tr><th className="px-3 py-3">Giocatore</th>{eventReportHistoryMatches.map((match, index) => <th key={match.id} className="px-3 py-3 text-center" title={match.name}>P{index + 1}</th>)}<th className="px-3 py-3 text-center">Gol</th><th className="px-3 py-3 text-center">Ass</th><th className="px-3 py-3 text-center">G</th><th className="px-3 py-3 text-center">R</th><th className="px-3 py-3 text-center">MVP</th><th className="px-3 py-3 text-center">MVS</th><th className="px-3 py-3 text-center">Pres.</th><th className="px-3 py-3 text-center">Media</th></tr></thead>
+                          <tbody>{eventReportSummaryRows.length === 0 ? <tr><td colSpan={10 + eventReportHistoryMatches.length} className="px-4 py-7 text-center text-slate-500">Le statistiche appariranno qui dopo il primo salvataggio del referto.</td></tr> : eventReportSummaryRows.map((row) => <tr key={row.player.id} className="border-t border-slate-800"><td className="px-3 py-3 font-bold text-white">{row.player.name}</td>{eventReportHistoryMatches.map((match) => <td key={match.id} className="px-3 py-3 text-center font-bold text-emerald-300">{row.ratingsByMatch.get(match.id) ?? "—"}</td>)}<td className="px-3 py-3 text-center">{row.goals}</td><td className="px-3 py-3 text-center">{row.assists}</td><td className="px-3 py-3 text-center">{row.yellow}</td><td className="px-3 py-3 text-center">{row.red}</td><td className="px-3 py-3 text-center">{row.mvp || "—"}</td><td className="px-3 py-3 text-center">{row.mvs || "—"}</td><td className="px-3 py-3 text-center">{row.appearances}</td><td className="px-3 py-3 text-center font-black text-emerald-300">{row.average ? row.average.toFixed(2) : "—"}</td></tr>)}</tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {isAdmin && <div className="mt-5 flex justify-end"><button type="button" disabled={eventReportSaving} onClick={() => void saveEventReport(selectedEventReport)} className="rounded-xl bg-emerald-500 px-5 py-3 font-bold text-slate-950 disabled:opacity-60">{eventReportSaving ? "Salvataggio..." : "💾 Salva referto"}</button></div>}
+                  </>
+                )}
+              </section>
             )}
 
           </div>
@@ -3153,6 +3455,16 @@ export default function Home() {
                         <p className="mt-1 text-slate-400">
                           🕘 {event.event_time}
                         </p>
+                      )}
+
+                      {(isAdmin || isPlayer) && (
+                        <button
+                          type="button"
+                          onClick={() => void openEventReport(event)}
+                          className="mt-5 w-full rounded-xl border border-sky-500/30 px-4 py-3 text-sm font-semibold text-sky-200 hover:bg-sky-500/10"
+                        >
+                          {openEventReportId === event.id ? "Chiudi referto" : "📝 Apri referto partita"}
+                        </button>
                       )}
 
                       {isAdmin && (
@@ -4148,12 +4460,14 @@ function Input({
   onChange,
   placeholder,
   type = "text",
+  disabled = false,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
   type?: string;
+  disabled?: boolean;
 }) {
   return (
     <div>
@@ -4167,7 +4481,8 @@ function Input({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none transition focus:border-emerald-500"
+        disabled={disabled}
+        className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none transition focus:border-emerald-500 disabled:cursor-not-allowed disabled:opacity-70"
       />
 
     </div>
