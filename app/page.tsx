@@ -2043,12 +2043,13 @@ export default function Home() {
         if (error || data?.error) throw new Error(data?.error || error?.message || "Errore azzeramento gol e assist.");
       }
 
-      const [disciplineResult, lineupsResult, reportResult] = await Promise.all([
+      const [disciplineResult, lineupsResult, statsDeleteResult, reportResult] = await Promise.all([
         supabase.from("match_player_discipline").delete().eq("match_id", event.id),
         supabase.from("event_report_lineups").delete().eq("event_id", event.id),
+        supabase.from("match_player_stats").delete().eq("match_id", event.id),
         supabase.from("match_reports").delete().eq("match_id", event.id),
       ]);
-      if (disciplineResult.error || lineupsResult.error || reportResult.error) throw disciplineResult.error || lineupsResult.error || reportResult.error;
+      if (disciplineResult.error || lineupsResult.error || statsDeleteResult.error || reportResult.error) throw disciplineResult.error || lineupsResult.error || statsDeleteResult.error || reportResult.error;
 
       setEventReportDrafts(Object.fromEntries(eventReportPositions.map((position, index) => [index + 1, {
         position,
@@ -2069,6 +2070,7 @@ export default function Home() {
       setMatchRatings((current) => current.filter((item) => item.match_id !== event.id));
       setMatchPlayerStats((current) => current.filter((item) => item.match_id !== event.id));
       setMatchDiscipline((current) => current.filter((item) => item.match_id !== event.id));
+      setSelectedHistoryMatchId(null);
       alert("Referto azzerato correttamente.");
     } catch (error) {
       alert("Errore azzeramento referto:\n" + (error instanceof Error ? error.message : "Dati non rimossi."));
@@ -3952,7 +3954,7 @@ export default function Home() {
             </div>
 
             {isAdmin && (
-              <section className="mt-8 rounded-3xl border border-emerald-500/30 bg-slate-900 p-5 sm:p-7">
+              <section id="match-history-editor" className="mt-8 rounded-3xl border border-emerald-500/30 bg-slate-900 p-5 sm:p-7">
                 <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <h3 className="text-xl font-black">➕ Registra o modifica una partita</h3>
@@ -4003,10 +4005,10 @@ export default function Home() {
                   </button>
                   {historyEventId && matchReports.some((report) => report.match_id === historyEventId) && (
                     <button type="button" onClick={() => {
-                      const report = matchReports.find((item) => item.match_id === historyEventId);
-                      if (report) void deleteMatchReport(report);
+                      const eventItem = events.find((item) => item.id === historyEventId);
+                      if (eventItem) void resetEventReport(eventItem);
                     }} className="rounded-xl border border-red-500/40 px-5 py-3 font-bold text-red-300 hover:bg-red-500/10">
-                      ↺ Azzera risultato
+                      🗑️ Cancella partita registrata
                     </button>
                   )}
                 </div>
@@ -4082,6 +4084,25 @@ export default function Home() {
                               </table>
                             </div>
                             {isAdmin && <p className="mt-3 text-xs text-slate-500">I cartellini si salvano automaticamente quando esci dalla casella.</p>}
+                            {isAdmin && (
+                              <div className="mt-5 flex flex-wrap gap-3 border-t border-slate-800 pt-4">
+                                <button type="button" onClick={() => {
+                                  openMatchReport(event, report);
+                                  window.setTimeout(() => document.getElementById("match-history-editor")?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+                                }} className="rounded-xl border border-sky-500/40 px-4 py-2 font-bold text-sky-200 hover:bg-sky-500/10">
+                                  ✏️ Modifica risultato
+                                </button>
+                                <button type="button" onClick={() => {
+                                  setActiveSection("events");
+                                  void openEventReport(event);
+                                }} className="rounded-xl border border-emerald-500/40 px-4 py-2 font-bold text-emerald-200 hover:bg-emerald-500/10">
+                                  📝 Modifica referto
+                                </button>
+                                <button type="button" disabled={eventReportSaving} onClick={() => void resetEventReport(event)} className="rounded-xl border border-red-500/40 px-4 py-2 font-bold text-red-300 hover:bg-red-500/10 disabled:opacity-60">
+                                  🗑️ Cancella / azzera
+                                </button>
+                              </div>
+                            )}
                           </div>
                         )}
                       </article>
