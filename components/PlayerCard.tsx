@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef } from "react";
+import { forwardRef, useRef } from "react";
 
 export type CardPlayer = {
   id: string;
@@ -131,10 +131,133 @@ const stats: Array<
   ["show_physical", "FIS", "physical", "physical"],
 ];
 
+function CardItem({
+  editable,
+  layoutKey,
+  value,
+  onChange,
+  style,
+  className,
+  children,
+}: {
+  editable?: boolean;
+  layoutKey: CardLayoutKey;
+  value: CardLayoutValue;
+  onChange?: (key: CardLayoutKey, update: Partial<CardLayoutValue>) => void;
+  style: Record<string, string>;
+  className: string;
+  children: React.ReactNode;
+}) {
+  const pointers = useRef(new Map<number, { x: number; y: number }>());
+  const start = useRef({
+    x: value.x,
+    y: value.y,
+    scale: value.scale,
+    pointX: 0,
+    pointY: 0,
+    distance: 0,
+  });
+  const clamp = (number: number, min: number, max: number) =>
+    Math.max(min, Math.min(max, number));
+  const begin = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!editable || !onChange) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    pointers.current.set(event.pointerId, {
+      x: event.clientX,
+      y: event.clientY,
+    });
+    const values = [...pointers.current.values()];
+    start.current = {
+      x: value.x,
+      y: value.y,
+      scale: value.scale,
+      pointX: values[0].x,
+      pointY: values[0].y,
+      distance:
+        values.length > 1
+          ? Math.hypot(values[0].x - values[1].x, values[0].y - values[1].y)
+          : 0,
+    };
+  };
+  const move = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!editable || !onChange || !pointers.current.has(event.pointerId))
+      return;
+    event.preventDefault();
+    pointers.current.set(event.pointerId, {
+      x: event.clientX,
+      y: event.clientY,
+    });
+    const values = [...pointers.current.values()];
+    if (values.length > 1 && start.current.distance > 0) {
+      const distance = Math.hypot(
+        values[0].x - values[1].x,
+        values[0].y - values[1].y,
+      );
+      onChange(layoutKey, {
+        scale: clamp(
+          (start.current.scale * distance) / start.current.distance,
+          35,
+          220,
+        ),
+      });
+      return;
+    }
+    const card = event.currentTarget.parentElement;
+    if (!card) return;
+    const rect = card.getBoundingClientRect();
+    onChange(layoutKey, {
+      x: clamp(
+        start.current.x +
+          ((event.clientX - start.current.pointX) / rect.width) * 100,
+        0,
+        100,
+      ),
+      y: clamp(
+        start.current.y +
+          ((event.clientY - start.current.pointY) / rect.height) * 100,
+        0,
+        100,
+      ),
+    });
+  };
+  const finish = (event: React.PointerEvent<HTMLDivElement>) => {
+    pointers.current.delete(event.pointerId);
+  };
+  return (
+    <div
+      style={style}
+      className={`${className} ${editable ? "cursor-move touch-none outline outline-1 outline-cyan-300/60 hover:outline-cyan-200" : ""}`}
+      onPointerDown={begin}
+      onPointerMove={move}
+      onPointerUp={finish}
+      onPointerCancel={finish}
+      onWheel={(event) => {
+        if (!editable || !onChange) return;
+        event.preventDefault();
+        onChange(layoutKey, {
+          scale: clamp(value.scale + (event.deltaY < 0 ? 5 : -5), 35, 220),
+        });
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
 const PlayerCard = forwardRef<
   HTMLDivElement,
-  { player: CardPlayer; card: PlayerCardData; className?: string }
->(({ player, card, className = "" }, ref) => {
+  {
+    player: CardPlayer;
+    card: PlayerCardData;
+    className?: string;
+    editable?: boolean;
+    onLayoutChange?: (
+      key: CardLayoutKey,
+      update: Partial<CardLayoutValue>,
+    ) => void;
+  }
+>(({ player, card, className = "", editable = false, onLayoutChange }, ref) => {
   const ovr = calculateOvr(card);
   const layout = resolvePlayerCardLayout(card.layout);
   const itemStyle = (key: CardLayoutKey) => ({
@@ -160,7 +283,14 @@ const PlayerCard = forwardRef<
         className="absolute inset-0 z-10 h-full w-full object-fill"
       />
       {card.show_photo && (
-        <div style={photoStyle} className="pointer-events-none absolute z-20">
+        <CardItem
+          editable={editable}
+          layoutKey="photo"
+          value={layout.photo}
+          onChange={onLayoutChange}
+          style={photoStyle}
+          className="absolute z-20"
+        >
           {card.photo_url ? (
             <img
               src={card.photo_url}
@@ -172,53 +302,77 @@ const PlayerCard = forwardRef<
               {player.name.slice(0, 2).toUpperCase()}
             </div>
           )}
-        </div>
+        </CardItem>
       )}
       {card.show_ovr && (
-        <span
+        <CardItem
+          editable={editable}
+          layoutKey="ovr"
+          value={layout.ovr}
+          onChange={onLayoutChange}
           style={itemStyle("ovr")}
           className="absolute z-30 text-[clamp(2.2rem,11vw,4.4rem)] font-black leading-none text-[#fff6d5] [text-shadow:0_2px_5px_rgba(15,23,42,.95)]"
         >
           {ovr}
-        </span>
+        </CardItem>
       )}
       {card.show_role && (
-        <span
+        <CardItem
+          editable={editable}
+          layoutKey="role"
+          value={layout.role}
+          onChange={onLayoutChange}
           style={itemStyle("role")}
           className="absolute z-30 text-[clamp(.75rem,3vw,1.25rem)] font-black leading-none text-[#fff6d5] [text-shadow:0_2px_5px_rgba(15,23,42,.95)]"
         >
           {player.position}
-        </span>
+        </CardItem>
       )}
       {card.show_name && (
-        <p
+        <CardItem
+          editable={editable}
+          layoutKey="name"
+          value={layout.name}
+          onChange={onLayoutChange}
           style={itemStyle("name")}
           className="absolute z-30 max-w-[76%] truncate text-[clamp(1.15rem,5vw,2.1rem)] font-black uppercase leading-none tracking-tight text-white [text-shadow:0_2px_5px_rgba(15,23,42,.95)]"
         >
           {player.name}
-        </p>
+        </CardItem>
       )}
       {card.show_id && (
-        <p
+        <CardItem
+          editable={editable}
+          layoutKey="id"
+          value={layout.id}
+          onChange={onLayoutChange}
           style={itemStyle("id")}
           className="absolute z-30 max-w-[76%] truncate text-[clamp(.58rem,2.3vw,.9rem)] font-bold tracking-wide text-white [text-shadow:0_2px_5px_rgba(15,23,42,.95)]"
         >
           ID EA: {player.psn_id}
-        </p>
+        </CardItem>
       )}
       {card.show_number && (
-        <span
+        <CardItem
+          editable={editable}
+          layoutKey="number"
+          value={layout.number}
+          onChange={onLayoutChange}
           style={itemStyle("number")}
           className="absolute z-30 text-[clamp(1rem,4.6vw,1.85rem)] font-black leading-none text-[#fff6d5] [text-shadow:0_2px_5px_rgba(15,23,42,.95)]"
         >
           #{player.shirt_number}
-        </span>
+        </CardItem>
       )}
       {stats.map(
         ([visible, label, key, value]) =>
           card[visible] && (
-            <div
+            <CardItem
               key={label}
+              editable={editable}
+              layoutKey={key}
+              value={layout[key]}
+              onChange={onLayoutChange}
               style={itemStyle(key)}
               className="absolute z-30 text-center leading-none text-[#fff6d5] [text-shadow:0_2px_4px_rgba(15,23,42,.95)]"
             >
@@ -228,7 +382,7 @@ const PlayerCard = forwardRef<
               <span className="mt-1 block text-[clamp(.42rem,1.7vw,.68rem)] font-black tracking-tight text-white">
                 {label}
               </span>
-            </div>
+            </CardItem>
           ),
       )}
     </div>

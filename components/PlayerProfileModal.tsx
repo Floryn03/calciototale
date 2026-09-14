@@ -46,20 +46,6 @@ const statFields: Array<{ key: StatKey; label: string; visible: ToggleKey }> = [
   { key: "defending", label: "DIF", visible: "show_defending" },
   { key: "physical", label: "FIS", visible: "show_physical" },
 ];
-const layoutLabels: Record<CardLayoutKey, string> = {
-  photo: "Foto bot",
-  ovr: "OVR",
-  role: "Ruolo",
-  name: "Nome",
-  id: "ID EA",
-  number: "Numero maglia",
-  velocity: "VEL",
-  shooting: "TIR",
-  passing: "PAS",
-  dribbling: "DRI",
-  defending: "DIF",
-  physical: "FIS",
-};
 
 function hydratePlayerCard(
   data: Record<string, unknown> | null,
@@ -383,10 +369,9 @@ function PlayerCardEditor({
     }));
   const toggle = (key: ToggleKey) =>
     setCard((current) => ({ ...current, [key]: !current[key] }));
-  const setLayout = (
+  const updateLayout = (
     key: CardLayoutKey,
-    field: "x" | "y" | "scale",
-    value: string,
+    update: Partial<{ x: number; y: number; scale: number }>,
   ) =>
     setCard((current) => ({
       ...current,
@@ -395,17 +380,9 @@ function PlayerCardEditor({
         [key]: {
           ...defaultPlayerCardLayout()[key],
           ...current.layout[key],
-          [field]: Math.max(
-            field === "scale" ? 35 : 0,
-            Math.min(field === "scale" ? 220 : 100, Number(value)),
-          ),
+          ...update,
         },
       },
-    }));
-  const resetLayoutItem = (key: CardLayoutKey) =>
-    setCard((current) => ({
-      ...current,
-      layout: { ...current.layout, [key]: defaultPlayerCardLayout()[key] },
     }));
   async function handlePhoto(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -644,74 +621,25 @@ function PlayerCardEditor({
               </fieldset>
               <fieldset className="rounded-2xl border border-cyan-300/35 p-4">
                 <legend className="px-2 font-bold text-cyan-100">
-                  Posizione e dimensione — fai tu
+                  Modifica direttamente la card
                 </legend>
-                <p className="mb-3 text-xs text-slate-400">
-                  Per ogni elemento puoi spostare orizzontalmente,
-                  verticalmente, ingrandire/ridurre, centrare o ripristinare la
-                  posizione dell’esempio.
+                <p className="text-sm text-slate-300">
+                  Nell’anteprima a destra: trascina con il mouse per spostare;
+                  usa la rotellina per ingrandire/ridurre. Da telefono: un dito
+                  per spostare, due dita per ingrandire o ridurre.
                 </p>
-                <div className="space-y-3">
-                  {cardLayoutKeys.map((key) => {
-                    const position = {
-                      ...defaultPlayerCardLayout()[key],
-                      ...card.layout[key],
-                    };
-                    return (
-                      <div key={key} className="rounded-xl bg-slate-950 p-3">
-                        <div className="mb-2 flex items-center justify-between gap-2">
-                          <p className="font-bold text-cyan-100">
-                            {layoutLabels[key]}
-                          </p>
-                          <div className="flex gap-2">
-                            <button
-                              type="button"
-                              onClick={() => setLayout(key, "x", "50")}
-                              className="text-xs font-bold text-cyan-200"
-                            >
-                              Centra
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => resetLayoutItem(key)}
-                              className="text-xs font-bold text-slate-300"
-                            >
-                              Ripristina
-                            </button>
-                          </div>
-                        </div>
-                        <div className="grid gap-2 sm:grid-cols-3">
-                          {(["x", "y", "scale"] as const).map((field) => (
-                            <label
-                              key={field}
-                              className="text-xs font-bold text-slate-300"
-                            >
-                              {field === "x"
-                                ? "Sinistra / destra"
-                                : field === "y"
-                                  ? "Alto / basso"
-                                  : "Dimensione"}
-                              <input
-                                type="range"
-                                min={field === "scale" ? 35 : 0}
-                                max={field === "scale" ? 220 : 100}
-                                value={position[field]}
-                                onChange={(event) =>
-                                  setLayout(key, field, event.target.value)
-                                }
-                                className="mt-1 w-full accent-cyan-300"
-                              />
-                              <span className="block text-center text-cyan-100">
-                                {Math.round(position[field])}
-                                {field === "scale" ? "%" : ""}
-                              </span>
-                            </label>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setCard((current) => ({
+                      ...current,
+                      layout: defaultPlayerCardLayout(),
+                    }))
+                  }
+                  className="mt-3 rounded-lg border border-cyan-300/40 px-3 py-2 text-sm font-bold text-cyan-100"
+                >
+                  ↺ Ripristina tutte le posizioni
+                </button>
               </fieldset>
               <fieldset className="rounded-2xl border border-slate-700 p-4">
                 <legend className="px-2 font-bold text-fuchsia-200">
@@ -875,7 +803,12 @@ function PlayerCardEditor({
         <aside className="flex flex-col items-center">
           <p className="mb-4 font-bold text-slate-400">ANTEPRIMA LIVE</p>
           <div className="w-full max-w-[390px]">
-            <PlayerCard player={player} card={card} />
+            <PlayerCard
+              player={player}
+              card={card}
+              editable
+              onLayoutChange={updateLayout}
+            />
           </div>
         </aside>
       </div>
