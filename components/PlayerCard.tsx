@@ -59,8 +59,17 @@ export const emptyPlayerCard = (): PlayerCardData => ({
 });
 
 export function calculateOvr(card: PlayerCardData) {
-  if (card.ovr_mode === "manual" && card.manual_ovr !== null) return card.manual_ovr;
-  return Math.round((card.velocity + card.shooting + card.passing + card.dribbling + card.defending + card.physical) / 6);
+  if (card.ovr_mode === "manual" && card.manual_ovr !== null)
+    return card.manual_ovr;
+  return Math.round(
+    (card.velocity +
+      card.shooting +
+      card.passing +
+      card.dribbling +
+      card.defending +
+      card.physical) /
+      6,
+  );
 }
 
 const stats: Array<[keyof PlayerCardData, string, keyof PlayerCardData]> = [
@@ -72,40 +81,92 @@ const stats: Array<[keyof PlayerCardData, string, keyof PlayerCardData]> = [
   ["show_physical", "FIS", "physical"],
 ];
 
-const PlayerCard = forwardRef<HTMLDivElement, { player: CardPlayer; card: PlayerCardData; className?: string }>(
-  ({ player, card, className = "" }, ref) => {
-    const ovr = calculateOvr(card);
-    return (
-      <div ref={ref} className={`relative aspect-[374/508] w-full select-none overflow-hidden ${className}`}>
-        {/* Template grafico ufficiale fornito da Calcio Totale: sempre mantenuto nelle sue proporzioni originali. */}
-        <img src="/calcio-totale-player-card-2026.png" alt="Player Card Calcio Totale 2026" className="absolute inset-0 z-10 h-full w-full object-contain" />
+const PlayerCard = forwardRef<
+  HTMLDivElement,
+  { player: CardPlayer; card: PlayerCardData; className?: string }
+>(({ player, card, className = "" }, ref) => {
+  const ovr = calculateOvr(card);
+  return (
+    <div
+      ref={ref}
+      className={`relative aspect-[374/508] w-full select-none ${className}`}
+    >
+      {/* Template grafico ufficiale fornito da Calcio Totale: sempre mantenuto nelle sue proporzioni originali. */}
+      <img
+        src="/calcio-totale-player-card-2026.png"
+        alt="Player Card Calcio Totale 2026"
+        className="absolute inset-0 z-10 h-full w-full object-contain"
+      />
 
-        {card.show_photo && (
-          <div className="absolute left-[14%] top-[15%] z-20 h-[45%] w-[72%] overflow-hidden rounded-[28%_28%_18%_18%] border border-fuchsia-200/55 bg-slate-950/45 shadow-[0_0_24px_rgba(236,72,153,.4)]">
-            {card.photo_url ? <img src={card.photo_url} alt="Foto giocatore" className="h-full w-full object-cover object-top" /> : <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-blue-950 via-violet-950 to-fuchsia-950 text-5xl font-black text-white/90">{player.name.slice(0, 2).toUpperCase()}</div>}
-            <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-violet-950/80 to-transparent" />
-          </div>
-        )}
-
-        <div className="absolute inset-x-[10%] top-[62%] z-30 text-white [text-shadow:0_2px_5px_rgba(15,23,42,.95)]">
-          <div className="flex items-end justify-between gap-2">
-            <div className="flex items-end gap-2">
-              {card.show_ovr && <span className="text-[clamp(2rem,10vw,4.1rem)] font-black leading-none">{ovr}</span>}
-              {card.show_role && <span className="mb-1 rounded-md border border-white/35 bg-indigo-950/65 px-2 py-1 text-[clamp(.65rem,2.4vw,1rem)] font-black">{player.position}</span>}
+      {card.show_photo && (
+        <div className="pointer-events-none absolute inset-x-[8%] top-[7%] z-20 h-[59%]">
+          {card.photo_url ? (
+            <img
+              src={card.photo_url}
+              alt="Foto giocatore"
+              className="h-full w-full object-contain object-bottom mix-blend-screen"
+            />
+          ) : (
+            <div className="flex h-full items-center justify-center text-[clamp(3rem,14vw,6rem)] font-black text-white/80">
+              {player.name.slice(0, 2).toUpperCase()}
             </div>
-            {card.show_number && <span className="mb-1 text-[clamp(1.15rem,5vw,2rem)] font-black">#{player.shirt_number}</span>}
-          </div>
-          {card.show_name && <p className="mt-1 truncate text-[clamp(1rem,4.1vw,1.75rem)] font-black uppercase tracking-tight">{player.name}</p>}
-          {card.show_id && <p className="mt-0.5 truncate text-[clamp(.58rem,2.2vw,.85rem)] font-bold tracking-wide text-fuchsia-100">ID EA · {player.psn_id}</p>}
+          )}
         </div>
+      )}
 
-        <div className="absolute inset-x-[11%] top-[78%] z-30 grid grid-cols-3 gap-x-1 gap-y-2 text-center [text-shadow:0_2px_4px_rgba(15,23,42,.95)]">
-          {stats.map(([visible, label, value]) => card[visible] && <div key={label} className="leading-none"><span className="block text-[clamp(.85rem,3.5vw,1.35rem)] font-black text-white">{card[value] as number}</span><span className="mt-0.5 block text-[clamp(.42rem,1.6vw,.62rem)] font-black tracking-[.15em] text-cyan-100">{label}</span></div>)}
-        </div>
+      <div className="absolute right-[10%] top-[13%] z-30 flex min-w-[22%] flex-col items-center text-[#fff6d5] [text-shadow:0_2px_5px_rgba(15,23,42,.95)]">
+        {card.show_ovr && (
+          <span className="text-[clamp(2.2rem,11vw,4.4rem)] font-black leading-none">
+            {ovr}
+          </span>
+        )}
+        {card.show_role && (
+          <span className="mt-1 text-[clamp(.75rem,3vw,1.25rem)] font-black leading-none">
+            {player.position}
+          </span>
+        )}
       </div>
-    );
-  }
-);
+
+      <div className="absolute inset-x-[10%] top-[66%] z-30 text-white [text-shadow:0_2px_5px_rgba(15,23,42,.95)]">
+        <div className="flex items-end justify-between gap-2">
+          {card.show_name ? (
+            <p className="min-w-0 truncate text-[clamp(1.15rem,5vw,2.1rem)] font-black uppercase leading-none tracking-tight">
+              {player.name}
+            </p>
+          ) : (
+            <span />
+          )}
+          {card.show_number && (
+            <span className="shrink-0 text-[clamp(1rem,4.6vw,1.85rem)] font-black leading-none text-[#fff6d5]">
+              #{player.shirt_number}
+            </span>
+          )}
+        </div>
+        {card.show_id && (
+          <p className="mt-[3%] truncate text-[clamp(.58rem,2.3vw,.9rem)] font-bold tracking-wide text-white/95">
+            ID EA: {player.psn_id}
+          </p>
+        )}
+      </div>
+
+      <div className="absolute inset-x-[9%] top-[82%] z-30 grid grid-cols-6 divide-x divide-fuchsia-200/70 text-center text-[#fff6d5] [text-shadow:0_2px_4px_rgba(15,23,42,.95)]">
+        {stats.map(([visible, label, value]) => (
+          <div
+            key={label}
+            className={`min-w-0 px-[3%] leading-none ${card[visible] ? "" : "invisible"}`}
+          >
+            <span className="block text-[clamp(.86rem,3.8vw,1.55rem)] font-black">
+              {card[value] as number}
+            </span>
+            <span className="mt-1 block text-[clamp(.42rem,1.7vw,.68rem)] font-black tracking-tight text-white">
+              {label}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+});
 
 PlayerCard.displayName = "PlayerCard";
 export default PlayerCard;
