@@ -1748,7 +1748,9 @@ Questa azione rimuove solo i dati archiviati e non può essere annullata.`)) ret
       .sort((a, b) => {
         const eventA = events.find((event) => event.id === a);
         const eventB = events.find((event) => event.id === b);
-        return (eventB?.event_date + (eventB?.event_time || "")).localeCompare(eventA?.event_date + (eventA?.event_time || ""));
+        const dateA = eventA ? eventA.event_date + (eventA.event_time || "") : "";
+        const dateB = eventB ? eventB.event_date + (eventB.event_time || "") : "";
+        return dateB.localeCompare(dateA);
       })[0];
     const event = events.find((item) => item.id === latestMatchId);
     if (!event) {
