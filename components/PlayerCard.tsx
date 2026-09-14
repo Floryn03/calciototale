@@ -58,6 +58,8 @@ export function resolvePlayerCardLayout(layout?: PlayerCardLayout | null) {
 
 export type PlayerCardData = {
   photo_url: string | null;
+  display_name: string | null;
+  display_id: string | null;
   ovr_mode: "automatic" | "manual";
   manual_ovr: number | null;
   velocity: number;
@@ -83,6 +85,8 @@ export type PlayerCardData = {
 
 export const emptyPlayerCard = (): PlayerCardData => ({
   photo_url: null,
+  display_name: null,
+  display_id: null,
   ovr_mode: "automatic",
   manual_ovr: null,
   velocity: 50,
@@ -259,6 +263,8 @@ const PlayerCard = forwardRef<
   }
 >(({ player, card, className = "", editable = false, onLayoutChange }, ref) => {
   const ovr = calculateOvr(card);
+  const displayName = card.display_name?.trim() || player.name;
+  const displayId = card.display_id?.trim() || player.psn_id;
   const layout = resolvePlayerCardLayout(card.layout);
   const itemStyle = (key: CardLayoutKey) => ({
     left: `${layout[key].x}%`,
@@ -299,7 +305,7 @@ const PlayerCard = forwardRef<
             />
           ) : (
             <div className="flex h-full items-center justify-center text-[clamp(3rem,14vw,6rem)] font-black text-white/80">
-              {player.name.slice(0, 2).toUpperCase()}
+              {displayName.slice(0, 2).toUpperCase()}
             </div>
           )}
         </CardItem>
@@ -335,9 +341,9 @@ const PlayerCard = forwardRef<
           value={layout.name}
           onChange={onLayoutChange}
           style={itemStyle("name")}
-          className="absolute z-30 max-w-[76%] truncate text-[clamp(1.15rem,5vw,2.1rem)] font-black uppercase leading-none tracking-tight text-white [text-shadow:0_2px_5px_rgba(15,23,42,.95)]"
+          className="absolute z-30 whitespace-nowrap text-[clamp(1.15rem,5vw,2.1rem)] font-black uppercase leading-none tracking-tight text-white [text-shadow:0_2px_5px_rgba(15,23,42,.95)]"
         >
-          {player.name}
+          {displayName}
         </CardItem>
       )}
       {card.show_id && (
@@ -347,9 +353,9 @@ const PlayerCard = forwardRef<
           value={layout.id}
           onChange={onLayoutChange}
           style={itemStyle("id")}
-          className="absolute z-30 max-w-[76%] truncate text-[clamp(.58rem,2.3vw,.9rem)] font-bold tracking-wide text-white [text-shadow:0_2px_5px_rgba(15,23,42,.95)]"
+          className="absolute z-30 whitespace-nowrap text-[clamp(.58rem,2.3vw,.9rem)] font-bold tracking-wide text-white [text-shadow:0_2px_5px_rgba(15,23,42,.95)]"
         >
-          ID EA: {player.psn_id}
+          ID EA: {displayId}
         </CardItem>
       )}
       {card.show_number && (

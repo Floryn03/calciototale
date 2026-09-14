@@ -457,6 +457,8 @@ function PlayerCardEditor({
       const template = await load("/calcio-totale-player-card-2026.png");
       context.drawImage(template, 0, 0, canvas.width, canvas.height);
       const layout = resolvePlayerCardLayout(card.layout);
+      const displayName = card.display_name?.trim() || player.name;
+      const displayId = card.display_id?.trim() || player.psn_id;
       const draw = (
         text: string,
         key: CardLayoutKey,
@@ -500,7 +502,7 @@ function PlayerCardEditor({
           context.font = "900 230px Arial";
           context.textAlign = "center";
           context.fillText(
-            player.name.slice(0, 2).toUpperCase(),
+            displayName.slice(0, 2).toUpperCase(),
             (canvas.width * layout.photo.x) / 100,
             (canvas.height * layout.photo.y) / 100,
           );
@@ -520,10 +522,10 @@ function PlayerCardEditor({
         draw(`#${player.shirt_number}`, "number", "900 64px Arial");
       }
       if (card.show_name) {
-        draw(player.name.toUpperCase(), "name", "900 68px Arial");
+        draw(displayName.toUpperCase(), "name", "900 68px Arial");
       }
       if (card.show_id) {
-        draw(`ID EA: ${player.psn_id}`, "id", "700 31px Arial");
+        draw(`ID EA: ${displayId}`, "id", "700 31px Arial");
       }
       const values: Array<[boolean, string, number]> = [
         [card.show_velocity, "VEL", card.velocity],
@@ -618,6 +620,39 @@ function PlayerCardEditor({
                     Rimuovi foto
                   </button>
                 )}
+              </fieldset>
+              <fieldset className="rounded-2xl border border-slate-700 p-4">
+                <legend className="px-2 font-bold text-fuchsia-200">
+                  Testi sulla card
+                </legend>
+                <p className="mb-3 text-xs text-slate-400">
+                  Questi campi modificano solo la Player Card: non cambiano
+                  profilo, ID di accesso o credenziali del giocatore.
+                </p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="text-sm font-bold">
+                    Nome sulla card
+                    <input
+                      value={card.display_name ?? ""}
+                      onChange={(event) =>
+                        setCard({ ...card, display_name: event.target.value })
+                      }
+                      placeholder={player.name}
+                      className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 p-3"
+                    />
+                  </label>
+                  <label className="text-sm font-bold">
+                    ID EA sulla card
+                    <input
+                      value={card.display_id ?? ""}
+                      onChange={(event) =>
+                        setCard({ ...card, display_id: event.target.value })
+                      }
+                      placeholder={player.psn_id}
+                      className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 p-3"
+                    />
+                  </label>
+                </div>
               </fieldset>
               <fieldset className="rounded-2xl border border-cyan-300/35 p-4">
                 <legend className="px-2 font-bold text-cyan-100">
