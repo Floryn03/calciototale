@@ -3,6 +3,10 @@
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 import PlayerCard, {
+  cardLayoutKeys,
+  CardLayoutKey,
+  defaultPlayerCardLayout,
+  resolvePlayerCardLayout,
   CardPlayer,
   calculateOvr,
   emptyPlayerCard,
@@ -42,6 +46,35 @@ const statFields: Array<{ key: StatKey; label: string; visible: ToggleKey }> = [
   { key: "defending", label: "DIF", visible: "show_defending" },
   { key: "physical", label: "FIS", visible: "show_physical" },
 ];
+const layoutLabels: Record<CardLayoutKey, string> = {
+  photo: "Foto bot",
+  ovr: "OVR",
+  role: "Ruolo",
+  name: "Nome",
+  id: "ID EA",
+  number: "Numero maglia",
+  velocity: "VEL",
+  shooting: "TIR",
+  passing: "PAS",
+  dribbling: "DRI",
+  defending: "DIF",
+  physical: "FIS",
+};
+
+function hydratePlayerCard(
+  data: Record<string, unknown> | null,
+): PlayerCardData {
+  const empty = emptyPlayerCard();
+  if (!data) return empty;
+  return {
+    ...empty,
+    ...data,
+    layout: {
+      ...empty.layout,
+      ...((data.layout as PlayerCardData["layout"] | null) || {}),
+    },
+  } as PlayerCardData;
+}
 
 function formatWeek(value: string) {
   return new Intl.DateTimeFormat("it-IT", {
@@ -269,9 +302,7 @@ function PlayerCardViewer({
       .select("*")
       .eq("player_id", player.id)
       .maybeSingle()
-      .then(({ data }) =>
-        setCard(data ? { ...emptyPlayerCard(), ...data } : emptyPlayerCard()),
-      );
+      .then(({ data }) => setCard(hydratePlayerCard(data)));
   }, [player.id]);
   return (
     <div className="fixed inset-0 z-[120] flex items-center justify-center overflow-y-auto bg-slate-950/95 p-4">
@@ -338,7 +369,7 @@ function PlayerCardEditor({
       .then(({ data, error }) => {
         if (!active) return;
         if (error) setMessage(`Errore lettura card: ${error.message}`);
-        setCard(data ? { ...emptyPlayerCard(), ...data } : emptyPlayerCard());
+        setCard(hydratePlayerCard(data));
         setLoading(false);
       });
     return () => {
@@ -352,6 +383,30 @@ function PlayerCardEditor({
     }));
   const toggle = (key: ToggleKey) =>
     setCard((current) => ({ ...current, [key]: !current[key] }));
+  const setLayout = (
+    key: CardLayoutKey,
+    field: "x" | "y" | "scale",
+    value: string,
+  ) =>
+    setCard((current) => ({
+      ...current,
+      layout: {
+        ...current.layout,
+        [key]: {
+          ...defaultPlayerCardLayout()[key],
+          ...current.layout[key],
+          [field]: Math.max(
+            field === "scale" ? 35 : 0,
+            Math.min(field === "scale" ? 220 : 100, Number(value)),
+          ),
+        },
+      },
+    }));
+  const resetLayoutItem = (key: CardLayoutKey) =>
+    setCard((current) => ({
+      ...current,
+      layout: { ...current.layout, [key]: defaultPlayerCardLayout()[key] },
+    }));
   async function handlePhoto(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -424,11 +479,32 @@ function PlayerCardEditor({
     try {
       const template = await load("/calcio-totale-player-card-2026.png");
       context.drawImage(template, 0, 0, canvas.width, canvas.height);
+      const layout = resolvePlayerCardLayout(card.layout);
+      const draw = (
+        text: string,
+        key: CardLayoutKey,
+        font: string,
+        align: CanvasTextAlign = "center",
+      ) => {
+        const position = layout[key];
+        context.save();
+        context.translate(
+          (canvas.width * position.x) / 100,
+          (canvas.height * position.y) / 100,
+        );
+        context.scale(position.scale / 100, position.scale / 100);
+        context.font = font;
+        context.textAlign = align;
+        context.strokeText(text, 0, 0);
+        context.fillText(text, 0, 0);
+        context.restore();
+      };
       if (card.show_photo) {
         if (card.photo_url) {
           const photo = await load(card.photo_url);
-          const maxWidth = 900;
-          const maxHeight = 1040;
+          const position = layout.photo;
+          const maxWidth = 900 * (position.scale / 100);
+          const maxHeight = 1040 * (position.scale / 100);
           const ratio = Math.min(
             maxWidth / photo.width,
             maxHeight / photo.height,
@@ -437,8 +513,8 @@ function PlayerCardEditor({
           const height = photo.height * ratio;
           context.drawImage(
             photo,
-            (canvas.width - width) / 2,
-            86 + maxHeight - height,
+            (canvas.width * position.x) / 100 - width / 2,
+            (canvas.height * position.y) / 100 + maxHeight / 2 - height,
             width,
             height,
           );
@@ -446,40 +522,31 @@ function PlayerCardEditor({
           context.fillStyle = "#ffffff";
           context.font = "900 230px Arial";
           context.textAlign = "center";
-          context.fillText(player.name.slice(0, 2).toUpperCase(), 512, 820);
+          context.fillText(
+            player.name.slice(0, 2).toUpperCase(),
+            (canvas.width * layout.photo.x) / 100,
+            (canvas.height * layout.photo.y) / 100,
+          );
         }
       }
       const ovr = calculateOvr(card);
       context.fillStyle = "#fff6d5";
       context.strokeStyle = "#18213e";
       context.lineWidth = 14;
-      context.font = "900 150px Arial";
-      context.textAlign = "center";
       if (card.show_ovr) {
-        context.strokeText(String(ovr), 166, 345);
-        context.fillText(String(ovr), 166, 345);
+        draw(String(ovr), "ovr", "900 150px Arial");
       }
-      context.font = "900 58px Arial";
       if (card.show_role) {
-        context.strokeText(player.position, 166, 435);
-        context.fillText(player.position, 166, 435);
+        draw(player.position, "role", "900 58px Arial");
       }
       if (card.show_number) {
-        context.textAlign = "right";
-        context.font = "900 64px Arial";
-        context.strokeText(`#${player.shirt_number}`, 900, 1185);
-        context.fillText(`#${player.shirt_number}`, 900, 1185);
+        draw(`#${player.shirt_number}`, "number", "900 64px Arial");
       }
-      context.textAlign = "left";
-      context.font = "900 68px Arial";
       if (card.show_name) {
-        context.strokeText(player.name.toUpperCase(), 120, 1185);
-        context.fillText(player.name.toUpperCase(), 120, 1185);
+        draw(player.name.toUpperCase(), "name", "900 68px Arial");
       }
-      context.font = "700 31px Arial";
       if (card.show_id) {
-        context.strokeText(`ID EA: ${player.psn_id}`, 120, 1245);
-        context.fillText(`ID EA: ${player.psn_id}`, 120, 1245);
+        draw(`ID EA: ${player.psn_id}`, "id", "700 31px Arial");
       }
       const values: Array<[boolean, string, number]> = [
         [card.show_velocity, "VEL", card.velocity],
@@ -492,13 +559,21 @@ function PlayerCardEditor({
       context.textAlign = "center";
       values.forEach(([visible, label, value], index) => {
         if (!visible) return;
-        const x = 150 + index * 145;
+        const key = cardLayoutKeys[index + 6];
+        const position = layout[key];
+        context.save();
+        context.translate(
+          (canvas.width * position.x) / 100,
+          (canvas.height * position.y) / 100,
+        );
+        context.scale(position.scale / 100, position.scale / 100);
         context.font = "900 59px Arial";
-        context.strokeText(String(value), x, 1360);
-        context.fillText(String(value), x, 1360);
+        context.strokeText(String(value), 0, 0);
+        context.fillText(String(value), 0, 0);
         context.font = "900 29px Arial";
-        context.strokeText(label, x, 1415);
-        context.fillText(label, x, 1415);
+        context.strokeText(label, 0, 55);
+        context.fillText(label, 0, 55);
+        context.restore();
       });
       const blob = await new Promise<Blob | null>((resolve) =>
         canvas.toBlob(resolve, "image/png"),
@@ -566,6 +641,77 @@ function PlayerCardEditor({
                     Rimuovi foto
                   </button>
                 )}
+              </fieldset>
+              <fieldset className="rounded-2xl border border-cyan-300/35 p-4">
+                <legend className="px-2 font-bold text-cyan-100">
+                  Posizione e dimensione — fai tu
+                </legend>
+                <p className="mb-3 text-xs text-slate-400">
+                  Per ogni elemento puoi spostare orizzontalmente,
+                  verticalmente, ingrandire/ridurre, centrare o ripristinare la
+                  posizione dell’esempio.
+                </p>
+                <div className="space-y-3">
+                  {cardLayoutKeys.map((key) => {
+                    const position = {
+                      ...defaultPlayerCardLayout()[key],
+                      ...card.layout[key],
+                    };
+                    return (
+                      <div key={key} className="rounded-xl bg-slate-950 p-3">
+                        <div className="mb-2 flex items-center justify-between gap-2">
+                          <p className="font-bold text-cyan-100">
+                            {layoutLabels[key]}
+                          </p>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setLayout(key, "x", "50")}
+                              className="text-xs font-bold text-cyan-200"
+                            >
+                              Centra
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => resetLayoutItem(key)}
+                              className="text-xs font-bold text-slate-300"
+                            >
+                              Ripristina
+                            </button>
+                          </div>
+                        </div>
+                        <div className="grid gap-2 sm:grid-cols-3">
+                          {(["x", "y", "scale"] as const).map((field) => (
+                            <label
+                              key={field}
+                              className="text-xs font-bold text-slate-300"
+                            >
+                              {field === "x"
+                                ? "Sinistra / destra"
+                                : field === "y"
+                                  ? "Alto / basso"
+                                  : "Dimensione"}
+                              <input
+                                type="range"
+                                min={field === "scale" ? 35 : 0}
+                                max={field === "scale" ? 220 : 100}
+                                value={position[field]}
+                                onChange={(event) =>
+                                  setLayout(key, field, event.target.value)
+                                }
+                                className="mt-1 w-full accent-cyan-300"
+                              />
+                              <span className="block text-center text-cyan-100">
+                                {Math.round(position[field])}
+                                {field === "scale" ? "%" : ""}
+                              </span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </fieldset>
               <fieldset className="rounded-2xl border border-slate-700 p-4">
                 <legend className="px-2 font-bold text-fuchsia-200">
