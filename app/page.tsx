@@ -1726,7 +1726,85 @@ Questa azione rimuove solo i dati archiviati e non può essere annullata.`)) ret
     }
     setArchivedMatchHistory((current) => current.filter((item) => item.id !== archive.id));
   }
+  async function deleteArchivedMatchHistory(archive: ArchivedMatchHistory) {
+    if (!isAdmin) return;
+    if (!window.confirm(`Cancellare definitivamente dallo storico la partita “${archive.event_name}”?
 
+Questa azione rimuove solo i dati archiviati e non può essere annullata.`)) return;
+    const { error } = await supabase.from("archived_match_history").delete().eq("id", archive.id);
+    if (error) {
+      alert("Errore cancellazione storico:\n" + error.message);
+      return;
+    }
+    setArchivedMatchHistory((current) => current.filter((item) => item.id !== archive.id));
+  }
+
+
+  function editIndividualStats(player: Player) {
+    const latestMatchId = matchRatings
+      .filter((rating) => rating.player_id === player.id)
+      .map((rating) => rating.match_id)
+      .filter((matchId) => events.some((event) => event.id === matchId))
+      .sort((a, b) => {
+        const eventA = events.find((event) => event.id === a);
+        const eventB = events.find((event) => event.id === b);
+        return (eventB?.event_date + (eventB?.event_time || "")).localeCompare(eventA?.event_date + (eventA?.event_time || ""));
+      })[0];
+    const event = events.find((item) => item.id === latestMatchId);
+    if (!event) {
+      alert("Non ci sono partite ancora presenti da modificare per questo giocatore. Le partite già eliminate rimangono nello storico; puoi azzerare solo i dati errati.");
+      return;
+    }
+    setActiveSection("events");
+    void openEventReport(event);
+  }
+
+  async function resetIndividualStats(player: Player) {
+    if (!isAdmin) return;
+    if (!window.confirm(`Azzerare tutte le statistiche di ${player.name}?
+
+Saranno rimossi solo voto, gol, assist, cartellini, MVP e MVS del giocatore. Eventi, presenze e dati degli altri giocatori non verranno modificati.`)) return;
+
+    try {
+      const ratingsToDelete = matchRatings.filter((rating) => rating.player_id === player.id);
+      for (const rating of ratingsToDelete) {
+        const { data, error } = await supabase.functions.invoke("manage-votazioni", {
+          body: { action: "delete_rating", match_id: rating.match_id, player_id: player.id },
+        });
+        if (error || data?.error) throw new Error(data?.error || error?.message || "Errore azzeramento voto.");
+      }
+
+      const [statsResult, disciplineResult, mvpResult, mvsResult] = await Promise.all([
+        supabase.from("match_player_stats").delete().eq("player_id", player.id),
+        supabase.from("match_player_discipline").delete().eq("player_id", player.id),
+        supabase.from("match_reports").update({ match_mvp_player_id: null }).eq("match_mvp_player_id", player.id),
+        supabase.from("match_reports").update({ match_mvs_player_id: null }).eq("match_mvs_player_id", player.id),
+      ]);
+      if (statsResult.error || disciplineResult.error || mvpResult.error || mvsResult.error) {
+        throw statsResult.error || disciplineResult.error || mvpResult.error || mvsResult.error;
+      }
+
+      const archivesToUpdate = archivedMatchHistory.filter((archive) =>
+        (archive.player_rows || []).some((row) => row.player_id === player.id) ||
+        archive.match_mvp_player_id === player.id ||
+        archive.match_mvs_player_id === player.id
+      );
+      for (const archive of archivesToUpdate) {
+        const { error } = await supabase.from("archived_match_history").update({
+          player_rows: (archive.player_rows || []).filter((row) => row.player_id !== player.id),
+          match_mvp_player_id: archive.match_mvp_player_id === player.id ? null : archive.match_mvp_player_id,
+          match_mvs_player_id: archive.match_mvs_player_id === player.id ? null : archive.match_mvs_player_id,
+        }).eq("id", archive.id);
+        if (error) throw error;
+      }
+
+      await Promise.all([loadMatchHistory(), loadMatchPlayerStats()]);
+      alert("Statistiche del giocatore azzerate correttamente.");
+    } catch (error) {
+      alert("Errore azzeramento statistiche:
+" + (error instanceof Error ? error.message : "Dati non rimossi."));
+    }
+  }
   // =========================================================
   // CALENDAR ENTRIES
   // =========================================================
@@ -4196,9 +4274,9 @@ Questa azione rimuove solo i dati archiviati e non può essere annullata.`)) ret
               <p className="mt-1 text-sm text-slate-400">Le partite giocate vengono conteggiate solo dopo il salvataggio del voto della prestazione reale. Presenze e referti preparati prima della gara non contano.</p>
               {isAdmin && <p className="mt-2 text-xs text-slate-500">Per correggere un dato apri la partita registrata sopra: puoi usare ✏️ Modifica, 📝 Modifica referto oppure 🗑️ Cancella / azzera.</p>}
               <div className="mt-5 overflow-x-auto">
-                <table className="min-w-[820px] w-full text-left text-sm">
+                <table className="min-w-[980px] w-full text-left text-sm">
                   <thead className="border-b border-slate-800 text-slate-400">
-                    <tr><th className="px-3 py-3">Giocatore</th><th className="px-3 py-3">Partite giocate</th><th className="px-3 py-3">Media</th><th className="px-3 py-3">Gol</th><th className="px-3 py-3">Assist</th><th className="px-3 py-3">Gialli</th><th className="px-3 py-3">Rossi</th><th className="px-3 py-3">MVP</th></tr>
+                    <tr><th className="px-3 py-3">Giocatore</th><th className="px-3 py-3">Partite giocate</th><th className="px-3 py-3">Media</th><th className="px-3 py-3">Gol</th><th className="px-3 py-3">Assist</th><th className="px-3 py-3">Gialli</th><th className="px-3 py-3">Rossi</th><th className="px-3 py-3">MVP</th>{isAdmin && <th className="px-3 py-3">Azioni</th>}</tr>
                   </thead>
                   <tbody>
                     {individualHistoryStats.map((item) => (
@@ -4207,6 +4285,7 @@ Questa azione rimuove solo i dati archiviati e non può essere annullata.`)) ret
                         <td className="px-3 py-3">{item.matchesPlayed}</td>
                         <td className="px-3 py-3 font-mono font-black text-emerald-300">{item.averageRating ? item.averageRating.toFixed(2) : "—"}</td>
                         <td className="px-3 py-3">{item.goals}</td><td className="px-3 py-3">{item.assists}</td><td className="px-3 py-3">{item.yellow}</td><td className="px-3 py-3">{item.red}</td><td className="px-3 py-3">{item.mvps ? "🏆 " + item.mvps : "—"}</td>
+                        {isAdmin && <td className="px-3 py-3"><div className="flex gap-2"><button type="button" onClick={() => editIndividualStats(item.player)} className="rounded-lg border border-sky-500/40 px-3 py-2 text-xs font-bold text-sky-200 hover:bg-sky-500/10">✏️ Modifica</button><button type="button" onClick={() => void resetIndividualStats(item.player)} className="rounded-lg border border-red-500/40 px-3 py-2 text-xs font-bold text-red-300 hover:bg-red-500/10">↺ Azzera</button></div></td>}
                       </tr>
                     ))}
                   </tbody>
