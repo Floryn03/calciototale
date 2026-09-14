@@ -355,8 +355,8 @@ function PlayerCardEditor({
   async function handlePhoto(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      setMessage("Seleziona un file immagine.");
+    if (file.type !== "image/png") {
+      setMessage("Carica il bot come PNG trasparente, senza sfondo.");
       return;
     }
     if (file.size > 2_000_000) {
@@ -370,7 +370,7 @@ function PlayerCardEditor({
       reader.readAsDataURL(file);
     });
     setCard((current) => ({ ...current, photo_url: dataUrl }));
-    setMessage("Foto pronta: premi Salva Player Card.");
+    setMessage("Bot PNG trasparente pronto: premi Salva Player Card.");
   }
   async function save() {
     setSaving(true);
@@ -410,8 +410,8 @@ function PlayerCardEditor({
   }
   async function exportPng() {
     const canvas = document.createElement("canvas");
-    canvas.width = 1496;
-    canvas.height = 2032;
+    canvas.width = 1024;
+    canvas.height = 1536;
     const context = canvas.getContext("2d");
     if (!context) return;
     const load = (source: string) =>
@@ -427,62 +427,59 @@ function PlayerCardEditor({
       if (card.show_photo) {
         if (card.photo_url) {
           const photo = await load(card.photo_url);
-          const maxWidth = 1256;
-          const maxHeight = 1200;
+          const maxWidth = 900;
+          const maxHeight = 1040;
           const ratio = Math.min(
             maxWidth / photo.width,
             maxHeight / photo.height,
           );
           const width = photo.width * ratio;
           const height = photo.height * ratio;
-          context.save();
-          context.globalCompositeOperation = "screen";
           context.drawImage(
             photo,
             (canvas.width - width) / 2,
-            140 + maxHeight - height,
+            86 + maxHeight - height,
             width,
             height,
           );
-          context.restore();
         } else {
           context.fillStyle = "#ffffff";
           context.font = "900 230px Arial";
           context.textAlign = "center";
-          context.fillText(player.name.slice(0, 2).toUpperCase(), 748, 850);
+          context.fillText(player.name.slice(0, 2).toUpperCase(), 512, 820);
         }
       }
       const ovr = calculateOvr(card);
       context.fillStyle = "#fff6d5";
       context.strokeStyle = "#18213e";
       context.lineWidth = 14;
-      context.font = "900 170px Arial";
+      context.font = "900 150px Arial";
       context.textAlign = "center";
       if (card.show_ovr) {
-        context.strokeText(String(ovr), 1240, 370);
-        context.fillText(String(ovr), 1240, 370);
+        context.strokeText(String(ovr), 166, 345);
+        context.fillText(String(ovr), 166, 345);
       }
-      context.font = "900 62px Arial";
+      context.font = "900 58px Arial";
       if (card.show_role) {
-        context.strokeText(player.position, 1240, 445);
-        context.fillText(player.position, 1240, 445);
+        context.strokeText(player.position, 166, 435);
+        context.fillText(player.position, 166, 435);
       }
       if (card.show_number) {
         context.textAlign = "right";
-        context.font = "900 68px Arial";
-        context.strokeText(`#${player.shirt_number}`, 1345, 1490);
-        context.fillText(`#${player.shirt_number}`, 1345, 1490);
+        context.font = "900 64px Arial";
+        context.strokeText(`#${player.shirt_number}`, 900, 1185);
+        context.fillText(`#${player.shirt_number}`, 900, 1185);
       }
       context.textAlign = "left";
-      context.font = "900 75px Arial";
+      context.font = "900 68px Arial";
       if (card.show_name) {
-        context.strokeText(player.name.toUpperCase(), 150, 1485);
-        context.fillText(player.name.toUpperCase(), 150, 1485);
+        context.strokeText(player.name.toUpperCase(), 120, 1185);
+        context.fillText(player.name.toUpperCase(), 120, 1185);
       }
-      context.font = "700 35px Arial";
+      context.font = "700 31px Arial";
       if (card.show_id) {
-        context.strokeText(`ID EA: ${player.psn_id}`, 150, 1550);
-        context.fillText(`ID EA: ${player.psn_id}`, 150, 1550);
+        context.strokeText(`ID EA: ${player.psn_id}`, 120, 1245);
+        context.fillText(`ID EA: ${player.psn_id}`, 120, 1245);
       }
       const values: Array<[boolean, string, number]> = [
         [card.show_velocity, "VEL", card.velocity],
@@ -495,13 +492,13 @@ function PlayerCardEditor({
       context.textAlign = "center";
       values.forEach(([visible, label, value], index) => {
         if (!visible) return;
-        const x = 258 + index * 196;
-        context.font = "900 64px Arial";
-        context.strokeText(String(value), x, 1755);
-        context.fillText(String(value), x, 1755);
-        context.font = "900 30px Arial";
-        context.strokeText(label, x, 1810);
-        context.fillText(label, x, 1810);
+        const x = 150 + index * 145;
+        context.font = "900 59px Arial";
+        context.strokeText(String(value), x, 1360);
+        context.fillText(String(value), x, 1360);
+        context.font = "900 29px Arial";
+        context.strokeText(label, x, 1415);
+        context.fillText(label, x, 1415);
       });
       const blob = await new Promise<Blob | null>((resolve) =>
         canvas.toBlob(resolve, "image/png"),
@@ -549,10 +546,10 @@ function PlayerCardEditor({
                   Foto Player Virtuale
                 </legend>
                 <label className="text-sm font-bold">
-                  Carica foto (massimo 2 MB)
+                  Carica bot PNG trasparente (massimo 2 MB)
                   <input
                     type="file"
-                    accept="image/*"
+                    accept="image/png"
                     onChange={handlePhoto}
                     className="mt-2 block w-full text-sm"
                   />

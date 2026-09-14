@@ -89,22 +89,22 @@ const PlayerCard = forwardRef<
   return (
     <div
       ref={ref}
-      className={`relative aspect-[374/508] w-full select-none ${className}`}
+      className={`relative aspect-[2/3] w-full select-none ${className}`}
     >
       {/* Template grafico ufficiale fornito da Calcio Totale: sempre mantenuto nelle sue proporzioni originali. */}
       <img
         src="/calcio-totale-player-card-2026.png"
         alt="Player Card Calcio Totale 2026"
-        className="absolute inset-0 z-10 h-full w-full object-contain"
+        className="absolute inset-0 z-10 h-full w-full object-fill"
       />
 
       {card.show_photo && (
-        <div className="pointer-events-none absolute inset-x-[8%] top-[7%] z-20 h-[59%]">
+        <div className="pointer-events-none absolute inset-x-[7%] top-[7%] z-20 h-[64%]">
           {card.photo_url ? (
             <img
               src={card.photo_url}
               alt="Foto giocatore"
-              className="h-full w-full object-contain object-bottom mix-blend-screen"
+              className="h-full w-full object-contain object-bottom"
             />
           ) : (
             <div className="flex h-full items-center justify-center text-[clamp(3rem,14vw,6rem)] font-black text-white/80">
@@ -114,7 +114,7 @@ const PlayerCard = forwardRef<
         </div>
       )}
 
-      <div className="absolute right-[10%] top-[13%] z-30 flex min-w-[22%] flex-col items-center text-[#fff6d5] [text-shadow:0_2px_5px_rgba(15,23,42,.95)]">
+      <div className="absolute left-[10%] top-[17%] z-30 flex min-w-[22%] flex-col items-center text-[#fff6d5] [text-shadow:0_2px_5px_rgba(15,23,42,.95)]">
         {card.show_ovr && (
           <span className="text-[clamp(2.2rem,11vw,4.4rem)] font-black leading-none">
             {ovr}
@@ -127,7 +127,7 @@ const PlayerCard = forwardRef<
         )}
       </div>
 
-      <div className="absolute inset-x-[10%] top-[66%] z-30 text-white [text-shadow:0_2px_5px_rgba(15,23,42,.95)]">
+      <div className="absolute inset-x-[10%] top-[73%] z-30 text-white [text-shadow:0_2px_5px_rgba(15,23,42,.95)]">
         <div className="flex items-end justify-between gap-2">
           {card.show_name ? (
             <p className="min-w-0 truncate text-[clamp(1.15rem,5vw,2.1rem)] font-black uppercase leading-none tracking-tight">
@@ -149,7 +149,7 @@ const PlayerCard = forwardRef<
         )}
       </div>
 
-      <div className="absolute inset-x-[9%] top-[82%] z-30 grid grid-cols-6 divide-x divide-fuchsia-200/70 text-center text-[#fff6d5] [text-shadow:0_2px_4px_rgba(15,23,42,.95)]">
+      <div className="absolute inset-x-[8%] top-[86%] z-30 grid grid-cols-6 divide-x divide-fuchsia-200/70 text-center text-[#fff6d5] [text-shadow:0_2px_4px_rgba(15,23,42,.95)]">
         {stats.map(([visible, label, value]) => (
           <div
             key={label}
