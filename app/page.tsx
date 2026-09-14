@@ -1726,20 +1726,6 @@ Questa azione rimuove solo i dati archiviati e non può essere annullata.`)) ret
     }
     setArchivedMatchHistory((current) => current.filter((item) => item.id !== archive.id));
   }
-  async function deleteArchivedMatchHistory(archive: ArchivedMatchHistory) {
-    if (!isAdmin) return;
-    if (!window.confirm(`Cancellare definitivamente dallo storico la partita “${archive.event_name}”?
-
-Questa azione rimuove solo i dati archiviati e non può essere annullata.`)) return;
-    const { error } = await supabase.from("archived_match_history").delete().eq("id", archive.id);
-    if (error) {
-      alert("Errore cancellazione storico:\n" + error.message);
-      return;
-    }
-    setArchivedMatchHistory((current) => current.filter((item) => item.id !== archive.id));
-  }
-
-
   function editIndividualStats(player: Player) {
     const latestMatchId = matchRatings
       .filter((rating) => rating.player_id === player.id)
