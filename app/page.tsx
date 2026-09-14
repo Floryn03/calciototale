@@ -1314,14 +1314,13 @@ export default function Home() {
   const individualHistoryStats = useMemo(() => players.map((player) => {
     const ratings = matchRatings.filter((rating) => rating.player_id === player.id);
     const statRows = matchPlayerStats.filter((stat) => stat.player_id === player.id);
-    // Una presenza indica disponibilità: non deve contare come partita giocata.
-    // La partita viene conteggiata solo se esiste un referto con dati prestazione salvati.
-    const recordedMatchIds = new Set([
-      ...ratings.map((item) => item.match_id),
-      ...statRows.map((item) => item.match_id),
-      ...matchDiscipline.filter((item) => item.player_id === player.id).map((item) => item.match_id),
-    ].filter((matchId) => matchReports.some((report) => report.match_id === matchId)));
-    const matchesPlayed = recordedMatchIds.size;
+    // Una presenza e il referto preparato prima della gara non indicano una partita giocata.
+    // Il conteggio scatta solo quando l'Admin registra il voto della prestazione reale.
+    const matchesPlayed = new Set(
+      ratings
+        .map((item) => item.match_id)
+        .filter((matchId) => matchReports.some((report) => report.match_id === matchId))
+    ).size;
     const averageRating = ratings.length
       ? ratings.reduce((total, item) => total + Number(item.rating), 0) / ratings.length
       : null;
@@ -4134,7 +4133,7 @@ export default function Home() {
 
             <section className="mt-8 rounded-3xl border border-slate-800 bg-slate-900 p-5 sm:p-7">
               <h3 className="text-xl font-black">👤 Statistiche individuali</h3>
-              <p className="mt-1 text-sm text-slate-400">Totali calcolati esclusivamente dalle partite con referto salvato. Le semplici presenze non vengono conteggiate come partita giocata.</p>
+              <p className="mt-1 text-sm text-slate-400">Le partite giocate vengono conteggiate solo dopo il salvataggio del voto della prestazione reale. Presenze e referti preparati prima della gara non contano.</p>
               {isAdmin && <p className="mt-2 text-xs text-slate-500">Per correggere un dato apri la partita registrata sopra: puoi usare ✏️ Modifica, 📝 Modifica referto oppure 🗑️ Cancella / azzera.</p>}
               <div className="mt-5 overflow-x-auto">
                 <table className="min-w-[820px] w-full text-left text-sm">
