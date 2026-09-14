@@ -282,6 +282,103 @@ function PlayerCardViewer({
   onEdit: () => void;
 }) {
   const [card, setCard] = useState<PlayerCardData | null>(null);
+  const [downloadMessage, setDownloadMessage] = useState("");
+
+  async function downloadCard() {
+    if (!card) return;
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = 1024;
+      canvas.height = 1536;
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("Canvas non disponibile");
+      const loadImage = (source: string) => new Promise<HTMLImageElement>((resolve, reject) => {
+        const image = new Image();
+        image.crossOrigin = "anonymous";
+        image.onload = () => resolve(image);
+        image.onerror = reject;
+        image.src = source;
+      });
+      const template = await loadImage("/calcio-totale-player-card-2026.png");
+      context.drawImage(template, 0, 0, canvas.width, canvas.height);
+      const layout = resolvePlayerCardLayout(card.layout);
+      const displayName = card.display_name?.trim() || player.name;
+      const displayId = card.display_id?.trim() || player.psn_id;
+      const drawText = (text: string, key: CardLayoutKey, font: string) => {
+        const position = layout[key];
+        context.save();
+        context.translate((canvas.width * position.x) / 100, (canvas.height * position.y) / 100);
+        context.scale(position.scale / 100, position.scale / 100);
+        context.textAlign = "center";
+        context.textBaseline = "middle";
+        context.font = font;
+        context.lineJoin = "round";
+        context.strokeStyle = "#18213e";
+        context.lineWidth = 12;
+        context.fillStyle = key === "name" || key === "id" ? "#ffffff" : "#fff6d5";
+        context.strokeText(text, 0, 0);
+        context.fillText(text, 0, 0);
+        context.restore();
+      };
+      if (card.show_photo) {
+        if (card.photo_url) {
+          const photo = await loadImage(card.photo_url);
+          const position = layout.photo;
+          const maxWidth = 900 * (position.scale / 100);
+          const maxHeight = 1040 * (position.scale / 100);
+          const ratio = Math.min(maxWidth / photo.width, maxHeight / photo.height);
+          const width = photo.width * ratio;
+          const height = photo.height * ratio;
+          context.drawImage(photo, (canvas.width * position.x) / 100 - width / 2, (canvas.height * position.y) / 100 + maxHeight / 2 - height, width, height);
+        } else {
+          context.fillStyle = "#ffffff";
+          context.font = "900 230px Arial";
+          context.textAlign = "center";
+          context.fillText(displayName.slice(0, 2).toUpperCase(), (canvas.width * layout.photo.x) / 100, (canvas.height * layout.photo.y) / 100);
+        }
+      }
+      if (card.show_ovr) drawText(String(calculateOvr(card)), "ovr", "900 150px Arial");
+      if (card.show_role) drawText(player.position, "role", "900 58px Arial");
+      if (card.show_number) drawText("#" + player.shirt_number, "number", "900 64px Arial");
+      if (card.show_name) drawText(displayName.toUpperCase(), "name", "900 68px Arial");
+      if (card.show_id) drawText("ID EA: " + displayId, "id", "700 31px Arial");
+      const metrics: Array<[boolean, string, number, CardLayoutKey]> = [
+        [card.show_velocity, "VEL", card.velocity, "velocity"], [card.show_shooting, "TIR", card.shooting, "shooting"],
+        [card.show_passing, "PAS", card.passing, "passing"], [card.show_dribbling, "DRI", card.dribbling, "dribbling"],
+        [card.show_defending, "DIF", card.defending, "defending"], [card.show_physical, "FIS", card.physical, "physical"],
+      ];
+      for (const [visible, label, value, key] of metrics) {
+        if (!visible) continue;
+        const position = layout[key];
+        context.save();
+        context.translate((canvas.width * position.x) / 100, (canvas.height * position.y) / 100);
+        context.scale(position.scale / 100, position.scale / 100);
+        context.textAlign = "center";
+        context.fillStyle = "#fff6d5";
+        context.strokeStyle = "#18213e";
+        context.lineWidth = 10;
+        context.font = "900 59px Arial";
+        context.strokeText(String(value), 0, 0);
+        context.fillText(String(value), 0, 0);
+        context.font = "900 29px Arial";
+        context.strokeText(label, 0, 55);
+        context.fillText(label, 0, 55);
+        context.restore();
+      }
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+      if (!blob) throw new Error("PNG non creato");
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "calcio-totale-" + (player.psn_id || "player-card") + ".png";
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setDownloadMessage("Card scaricata in PNG.");
+    } catch {
+      setDownloadMessage("La card sta ancora caricando: attendi un secondo e riprova.");
+    }
+  }
+
   useEffect(() => {
     void supabase
       .from("player_cards")
@@ -302,6 +399,13 @@ function PlayerCardViewer({
             👤 Profilo
           </button>
           <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => void downloadCard()}
+              className="min-h-10 rounded-xl border border-cyan-300/50 bg-slate-950/90 px-3 text-sm font-bold text-cyan-100"
+            >
+              📥 Scarica PNG
+            </button>
             {isAdmin && (
               <button
                 type="button"
@@ -321,11 +425,14 @@ function PlayerCardViewer({
           </div>
         </div>
         {card ? (
-          <PlayerCard
-            player={player}
-            card={card}
-            className="drop-shadow-[0_24px_45px_rgba(0,0,0,.55)]"
-          />
+          <>
+            <PlayerCard
+              player={player}
+              card={card}
+              className="drop-shadow-[0_24px_45px_rgba(0,0,0,.55)]"
+            />
+            {downloadMessage && <p className="mt-3 rounded-xl border border-cyan-300/30 bg-cyan-300/10 p-3 text-center text-sm font-bold text-cyan-100">{downloadMessage}</p>}
+          </>
         ) : (
           <div className="aspect-[374/508] animate-pulse rounded-3xl bg-slate-800" />
         )}

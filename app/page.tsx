@@ -2487,6 +2487,19 @@ export default function Home() {
               </button>
             )}
 
+            {isPlayer && (
+              <button
+                type="button"
+                onClick={() => {
+                  const ownPlayer = players.find((player) => player.id === sessionPlayerId);
+                  if (ownPlayer) setProfilePlayer(ownPlayer);
+                }}
+                className="min-h-11 touch-manipulation rounded-xl border border-fuchsia-300/40 px-4 py-2 text-sm font-bold text-fuchsia-100 transition hover:bg-fuchsia-300/10"
+              >
+                🪪 La mia Card
+              </button>
+            )}
+
             <button
               type="button"
               onClick={() => {
