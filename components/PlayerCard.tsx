@@ -76,41 +76,31 @@ const PlayerCard = forwardRef<HTMLDivElement, { player: CardPlayer; card: Player
   ({ player, card, className = "" }, ref) => {
     const ovr = calculateOvr(card);
     return (
-      <div ref={ref} className={`relative aspect-[2/3] w-full overflow-hidden ${className}`}>
-        {/* Template ufficiale: è un asset fisso e non viene mai modificato dall'editor. */}
-        <img
-          src="/calcio-totale-player-card-template.png"
-          alt="Player Card ufficiale Calcio Totale"
-          className="absolute inset-0 h-full w-full object-contain"
-        />
+      <div ref={ref} className={`relative aspect-[374/508] w-full select-none overflow-hidden ${className}`}>
+        {/* Template grafico ufficiale fornito da Calcio Totale: sempre mantenuto nelle sue proporzioni originali. */}
+        <img src="/calcio-totale-player-card-2026.png" alt="Player Card Calcio Totale 2026" className="absolute inset-0 z-10 h-full w-full object-contain" />
 
         {card.show_photo && (
-          <div className="absolute left-1/2 top-[12%] h-[27%] w-[48%] -translate-x-1/2 overflow-hidden rounded-full border-4 border-amber-500/70 bg-slate-900 shadow-[0_0_24px_rgba(180,120,20,.35)]">
-            {card.photo_url ? (
-              <img src={card.photo_url} alt="Foto giocatore" className="h-full w-full object-cover" />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-slate-700 to-slate-950 text-5xl font-black text-amber-300">
-                {player.name.slice(0, 2).toUpperCase()}
-              </div>
-            )}
+          <div className="absolute left-[14%] top-[15%] z-20 h-[45%] w-[72%] overflow-hidden rounded-[28%_28%_18%_18%] border border-fuchsia-200/55 bg-slate-950/45 shadow-[0_0_24px_rgba(236,72,153,.4)]">
+            {card.photo_url ? <img src={card.photo_url} alt="Foto giocatore" className="h-full w-full object-cover object-top" /> : <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-blue-950 via-violet-950 to-fuchsia-950 text-5xl font-black text-white/90">{player.name.slice(0, 2).toUpperCase()}</div>}
+            <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-violet-950/80 to-transparent" />
           </div>
         )}
 
-        <div className="absolute left-[10%] top-[43%] flex max-w-[80%] items-end gap-3 text-slate-900">
-          {card.show_ovr && <span className="text-5xl font-black leading-none drop-shadow-sm">{ovr}</span>}
-          {card.show_role && <span className="mb-1 rounded bg-amber-500/85 px-2 py-1 text-sm font-black">{player.position}</span>}
-        </div>
-        {card.show_name && <p className="absolute left-[10%] top-[51%] max-w-[80%] truncate text-2xl font-black uppercase tracking-tight text-slate-900">{player.name}</p>}
-        {card.show_id && <p className="absolute left-[10%] top-[56%] max-w-[80%] truncate text-sm font-bold tracking-wide text-slate-700">{player.psn_id}</p>}
-        {card.show_number && <p className="absolute right-[10%] top-[55%] text-xl font-black text-amber-700">#{player.shirt_number}</p>}
-
-        <div className="absolute left-[10%] right-[10%] top-[63%] grid grid-cols-3 gap-x-2 gap-y-3">
-          {stats.map(([visible, label, value]) => card[visible] && (
-            <div key={label} className="text-center leading-none">
-              <span className="block text-xl font-black text-white drop-shadow-[0_1px_2px_rgba(0,0,0,.8)]">{card[value] as number}</span>
-              <span className="mt-1 block text-[10px] font-black tracking-[0.16em] text-emerald-400 drop-shadow-[0_1px_2px_rgba(0,0,0,.8)]">{label}</span>
+        <div className="absolute inset-x-[10%] top-[62%] z-30 text-white [text-shadow:0_2px_5px_rgba(15,23,42,.95)]">
+          <div className="flex items-end justify-between gap-2">
+            <div className="flex items-end gap-2">
+              {card.show_ovr && <span className="text-[clamp(2rem,10vw,4.1rem)] font-black leading-none">{ovr}</span>}
+              {card.show_role && <span className="mb-1 rounded-md border border-white/35 bg-indigo-950/65 px-2 py-1 text-[clamp(.65rem,2.4vw,1rem)] font-black">{player.position}</span>}
             </div>
-          ))}
+            {card.show_number && <span className="mb-1 text-[clamp(1.15rem,5vw,2rem)] font-black">#{player.shirt_number}</span>}
+          </div>
+          {card.show_name && <p className="mt-1 truncate text-[clamp(1rem,4.1vw,1.75rem)] font-black uppercase tracking-tight">{player.name}</p>}
+          {card.show_id && <p className="mt-0.5 truncate text-[clamp(.58rem,2.2vw,.85rem)] font-bold tracking-wide text-fuchsia-100">ID EA · {player.psn_id}</p>}
+        </div>
+
+        <div className="absolute inset-x-[11%] top-[78%] z-30 grid grid-cols-3 gap-x-1 gap-y-2 text-center [text-shadow:0_2px_4px_rgba(15,23,42,.95)]">
+          {stats.map(([visible, label, value]) => card[visible] && <div key={label} className="leading-none"><span className="block text-[clamp(.85rem,3.5vw,1.35rem)] font-black text-white">{card[value] as number}</span><span className="mt-0.5 block text-[clamp(.42rem,1.6vw,.62rem)] font-black tracking-[.15em] text-cyan-100">{label}</span></div>)}
         </div>
       </div>
     );
