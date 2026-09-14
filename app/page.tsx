@@ -108,6 +108,32 @@ type MatchReport = {
   match_mvs_player_id: string | null;
 };
 
+type ArchivedMatchPlayerRow = {
+  player_id: string;
+  role: string | null;
+  rating: number | null;
+  goals: number;
+  assists: number;
+  yellow: number;
+  red: number;
+};
+
+type ArchivedMatchHistory = {
+  id: string;
+  original_event_id: string;
+  event_name: string;
+  event_date: string;
+  event_time: string | null;
+  opponent: string;
+  team_score: number;
+  opponent_score: number;
+  note: string | null;
+  match_mvp_player_id: string | null;
+  match_mvs_player_id: string | null;
+  player_rows: ArchivedMatchPlayerRow[];
+  archived_at: string;
+};
+
 type EventReportLineup = {
   id?: string;
   event_id: string;
@@ -343,6 +369,7 @@ export default function Home() {
   const [presences, setPresences] = useState<Presence[]>([]);
   const [matchPlayerStats, setMatchPlayerStats] = useState<MatchPlayerStat[]>([]);
   const [matchReports, setMatchReports] = useState<MatchReport[]>([]);
+  const [archivedMatchHistory, setArchivedMatchHistory] = useState<ArchivedMatchHistory[]>([]);
   const [matchDiscipline, setMatchDiscipline] = useState<MatchDiscipline[]>([]);
   const [matchRatings, setMatchRatings] = useState<MatchRatingRecord[]>([]);
   const [historyPresences, setHistoryPresences] = useState<HistoryPresence[]>([]);
@@ -893,15 +920,16 @@ export default function Home() {
 
   const loadMatchHistory = useCallback(async () => {
     setHistoryLoading(true);
-    const [reportsResult, disciplineResult, ratingsResult, presencesResult] = await Promise.all([
+    const [reportsResult, disciplineResult, ratingsResult, presencesResult, archivedResult] = await Promise.all([
       supabase.from("match_reports").select("match_id, opponent, team_score, opponent_score, note, match_mvp_player_id, match_mvs_player_id"),
       supabase.from("match_player_discipline").select("match_id, player_id, yellow_cards, red_cards"),
       supabase.from("match_ratings").select("match_id, player_id, rating"),
       supabase.from("presences").select("event_id, player_id, status, event_role").eq("status", "Presente").not("event_id", "is", null),
+      supabase.from("archived_match_history").select("id, original_event_id, event_name, event_date, event_time, opponent, team_score, opponent_score, note, match_mvp_player_id, match_mvs_player_id, player_rows, archived_at").order("event_date", { ascending: false }),
     ]);
 
-    if (reportsResult.error || disciplineResult.error || ratingsResult.error || presencesResult.error) {
-      console.error("Errore caricamento storico partite:", reportsResult.error || disciplineResult.error || ratingsResult.error || presencesResult.error);
+    if (reportsResult.error || disciplineResult.error || ratingsResult.error || presencesResult.error || archivedResult.error) {
+      console.error("Errore caricamento storico partite:", reportsResult.error || disciplineResult.error || ratingsResult.error || presencesResult.error || archivedResult.error);
       setHistoryLoading(false);
       return;
     }
@@ -910,6 +938,7 @@ export default function Home() {
     setMatchDiscipline((disciplineResult.data || []) as MatchDiscipline[]);
     setMatchRatings((ratingsResult.data || []) as MatchRatingRecord[]);
     setHistoryPresences((presencesResult.data || []) as HistoryPresence[]);
+    setArchivedMatchHistory((archivedResult.data || []) as ArchivedMatchHistory[]);
     setHistoryLoading(false);
   }, []);
 
@@ -1269,6 +1298,14 @@ export default function Home() {
       current.assists += Number(stat.assists) || 0;
       totals.set(stat.player_id, current);
     }
+    for (const archived of archivedMatchHistory) {
+      for (const stat of archived.player_rows || []) {
+        const current = totals.get(stat.player_id) || { goals: 0, assists: 0 };
+        current.goals += Number(stat.goals) || 0;
+        current.assists += Number(stat.assists) || 0;
+        totals.set(stat.player_id, current);
+      }
+    }
 
     return [...totals.entries()]
       .map(([playerId, totals]) => {
@@ -1278,7 +1315,7 @@ export default function Home() {
           : null;
       })
       .filter((entry): entry is LeaderboardEntry => Boolean(entry));
-  }, [matchPlayerStats, players]);
+  }, [matchPlayerStats, archivedMatchHistory, players]);
 
   const goalsLeaderboard = useMemo(
     () => leaderboardEntries
@@ -1314,21 +1351,30 @@ export default function Home() {
   const individualHistoryStats = useMemo(() => players.map((player) => {
     const ratings = matchRatings.filter((rating) => rating.player_id === player.id);
     const statRows = matchPlayerStats.filter((stat) => stat.player_id === player.id);
+    const archivedRows = archivedMatchHistory.flatMap((archive) =>
+      (archive.player_rows || []).filter((row) => row.player_id === player.id)
+    );
     // Una presenza e il referto preparato prima della gara non indicano una partita giocata.
     // Il conteggio scatta solo quando l'Admin registra il voto della prestazione reale.
-    const matchesPlayed = new Set(
-      ratings
-        .map((item) => item.match_id)
-        .filter((matchId) => matchReports.some((report) => report.match_id === matchId))
+    const liveMatchesPlayed = new Set(
+      ratings.map((item) => item.match_id).filter((matchId) => matchReports.some((report) => report.match_id === matchId))
     ).size;
-    const averageRating = ratings.length
-      ? ratings.reduce((total, item) => total + Number(item.rating), 0) / ratings.length
+    const archivedRatings = archivedRows.filter((row) => row.rating !== null).map((row) => Number(row.rating));
+    const allRatings = [...ratings.map((item) => Number(item.rating)), ...archivedRatings];
+    const matchesPlayed = liveMatchesPlayed + archivedRatings.length;
+    const averageRating = allRatings.length
+      ? allRatings.reduce((total, value) => total + value, 0) / allRatings.length
       : null;
-    const goals = statRows.reduce((total, item) => total + Number(item.goals || 0), 0);
-    const assists = statRows.reduce((total, item) => total + Number(item.assists || 0), 0);
-    const yellow = matchDiscipline.filter((item) => item.player_id === player.id).reduce((total, item) => total + Number(item.yellow_cards || 0), 0);
-    const red = matchDiscipline.filter((item) => item.player_id === player.id).reduce((total, item) => total + Number(item.red_cards || 0), 0);
-    const mvps = matchReports.filter((report) => report.match_mvp_player_id === player.id).length;
+    const goals = statRows.reduce((total, item) => total + Number(item.goals || 0), 0)
+      + archivedRows.reduce((total, item) => total + Number(item.goals || 0), 0);
+    const assists = statRows.reduce((total, item) => total + Number(item.assists || 0), 0)
+      + archivedRows.reduce((total, item) => total + Number(item.assists || 0), 0);
+    const yellow = matchDiscipline.filter((item) => item.player_id === player.id).reduce((total, item) => total + Number(item.yellow_cards || 0), 0)
+      + archivedRows.reduce((total, item) => total + Number(item.yellow || 0), 0);
+    const red = matchDiscipline.filter((item) => item.player_id === player.id).reduce((total, item) => total + Number(item.red_cards || 0), 0)
+      + archivedRows.reduce((total, item) => total + Number(item.red || 0), 0);
+    const mvps = matchReports.filter((report) => report.match_mvp_player_id === player.id).length
+      + archivedMatchHistory.filter((archive) => archive.match_mvp_player_id === player.id).length;
     return { player, matchesPlayed, averageRating, goals, assists, yellow, red, mvps };
   }).sort((a, b) => {
     const aOrder = individualStatsPlayerOrder.indexOf(a.player.name);
@@ -1336,7 +1382,7 @@ export default function Home() {
     return (aOrder === -1 ? Number.MAX_SAFE_INTEGER : aOrder)
       - (bOrder === -1 ? Number.MAX_SAFE_INTEGER : bOrder)
       || a.player.name.localeCompare(b.player.name, "it");
-  }), [players, matchRatings, matchPlayerStats, historyPresences, matchDiscipline, matchReports]);
+  }), [players, matchRatings, matchPlayerStats, historyPresences, matchDiscipline, matchReports, archivedMatchHistory]);
 
   // =========================================================
   // PRESENCE
@@ -1665,6 +1711,21 @@ export default function Home() {
     if (selectedEventId === id) {
       setSelectedEventId("");
     }
+    await Promise.all([loadMatchHistory(), loadMatchPlayerStats()]);
+  }
+
+  async function deleteArchivedMatchHistory(archive: ArchivedMatchHistory) {
+    if (!isAdmin) return;
+    if (!window.confirm(`Cancellare definitivamente dallo storico la partita “${archive.event_name}”?
+
+Questa azione rimuove solo i dati archiviati e non può essere annullata.`)) return;
+    const { error } = await supabase.from("archived_match_history").delete().eq("id", archive.id);
+    if (error) {
+      alert("Errore cancellazione storico:
+" + error.message);
+      return;
+    }
+    setArchivedMatchHistory((current) => current.filter((item) => item.id !== archive.id));
   }
 
   // =========================================================
@@ -4153,6 +4214,26 @@ export default function Home() {
                 </table>
               </div>
             </section>
+
+            {isAdmin && archivedMatchHistory.length > 0 && (
+              <section className="mt-8 rounded-3xl border border-amber-400/30 bg-slate-900 p-5 sm:p-7">
+                <h3 className="text-xl font-black">🗄️ Storico salvato di eventi eliminati</h3>
+                <p className="mt-1 text-sm text-slate-400">Queste statistiche rimangono valide anche se l’evento è stato eliminato. Solo qui puoi cancellarle definitivamente.</p>
+                <div className="mt-5 space-y-3">
+                  {archivedMatchHistory.map((archive) => (
+                    <div key={archive.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+                      <div>
+                        <p className="font-bold">{archive.event_date} · {archive.event_name}</p>
+                        <p className="text-sm text-slate-400">Calcio Totale vs {archive.opponent} · {archive.team_score} - {archive.opponent_score}</p>
+                      </div>
+                      <button type="button" onClick={() => void deleteArchivedMatchHistory(archive)} className="rounded-xl border border-red-500/40 px-4 py-2 text-sm font-bold text-red-300 hover:bg-red-500/10">
+                        🗑️ Cancella definitivamente
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
           </div>
         )}
 
