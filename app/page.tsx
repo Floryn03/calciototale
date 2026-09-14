@@ -1721,8 +1721,7 @@ export default function Home() {
 Questa azione rimuove solo i dati archiviati e non può essere annullata.`)) return;
     const { error } = await supabase.from("archived_match_history").delete().eq("id", archive.id);
     if (error) {
-      alert("Errore cancellazione storico:
-" + error.message);
+      alert("Errore cancellazione storico:\n" + error.message);
       return;
     }
     setArchivedMatchHistory((current) => current.filter((item) => item.id !== archive.id));
