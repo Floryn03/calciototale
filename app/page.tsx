@@ -1801,8 +1801,7 @@ Saranno rimossi solo voto, gol, assist, cartellini, MVP e MVS del giocatore. Eve
       await Promise.all([loadMatchHistory(), loadMatchPlayerStats()]);
       alert("Statistiche del giocatore azzerate correttamente.");
     } catch (error) {
-      alert("Errore azzeramento statistiche:
-" + (error instanceof Error ? error.message : "Dati non rimossi."));
+      alert("Errore azzeramento statistiche:\n" + (error instanceof Error ? error.message : "Dati non rimossi."));
     }
   }
   // =========================================================
