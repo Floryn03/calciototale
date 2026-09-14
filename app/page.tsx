@@ -1314,7 +1314,14 @@ export default function Home() {
   const individualHistoryStats = useMemo(() => players.map((player) => {
     const ratings = matchRatings.filter((rating) => rating.player_id === player.id);
     const statRows = matchPlayerStats.filter((stat) => stat.player_id === player.id);
-    const presencesCount = historyPresences.filter((presence) => presence.player_id === player.id).length;
+    // Una presenza indica disponibilità: non deve contare come partita giocata.
+    // La partita viene conteggiata solo se esiste un referto con dati prestazione salvati.
+    const recordedMatchIds = new Set([
+      ...ratings.map((item) => item.match_id),
+      ...statRows.map((item) => item.match_id),
+      ...matchDiscipline.filter((item) => item.player_id === player.id).map((item) => item.match_id),
+    ].filter((matchId) => matchReports.some((report) => report.match_id === matchId)));
+    const matchesPlayed = recordedMatchIds.size;
     const averageRating = ratings.length
       ? ratings.reduce((total, item) => total + Number(item.rating), 0) / ratings.length
       : null;
@@ -1323,7 +1330,7 @@ export default function Home() {
     const yellow = matchDiscipline.filter((item) => item.player_id === player.id).reduce((total, item) => total + Number(item.yellow_cards || 0), 0);
     const red = matchDiscipline.filter((item) => item.player_id === player.id).reduce((total, item) => total + Number(item.red_cards || 0), 0);
     const mvps = matchReports.filter((report) => report.match_mvp_player_id === player.id).length;
-    return { player, presencesCount, averageRating, goals, assists, yellow, red, mvps };
+    return { player, matchesPlayed, averageRating, goals, assists, yellow, red, mvps };
   }).sort((a, b) => {
     const aOrder = individualStatsPlayerOrder.indexOf(a.player.name);
     const bOrder = individualStatsPlayerOrder.indexOf(b.player.name);
@@ -4127,17 +4134,18 @@ export default function Home() {
 
             <section className="mt-8 rounded-3xl border border-slate-800 bg-slate-900 p-5 sm:p-7">
               <h3 className="text-xl font-black">👤 Statistiche individuali</h3>
-              <p className="mt-1 text-sm text-slate-400">Totali calcolati dai voti, dalle presenze e dalle prestazioni registrate.</p>
+              <p className="mt-1 text-sm text-slate-400">Totali calcolati esclusivamente dalle partite con referto salvato. Le semplici presenze non vengono conteggiate come partita giocata.</p>
+              {isAdmin && <p className="mt-2 text-xs text-slate-500">Per correggere un dato apri la partita registrata sopra: puoi usare ✏️ Modifica, 📝 Modifica referto oppure 🗑️ Cancella / azzera.</p>}
               <div className="mt-5 overflow-x-auto">
                 <table className="min-w-[820px] w-full text-left text-sm">
                   <thead className="border-b border-slate-800 text-slate-400">
-                    <tr><th className="px-3 py-3">Giocatore</th><th className="px-3 py-3">Presenze</th><th className="px-3 py-3">Media</th><th className="px-3 py-3">Gol</th><th className="px-3 py-3">Assist</th><th className="px-3 py-3">Gialli</th><th className="px-3 py-3">Rossi</th><th className="px-3 py-3">MVP</th></tr>
+                    <tr><th className="px-3 py-3">Giocatore</th><th className="px-3 py-3">Partite giocate</th><th className="px-3 py-3">Media</th><th className="px-3 py-3">Gol</th><th className="px-3 py-3">Assist</th><th className="px-3 py-3">Gialli</th><th className="px-3 py-3">Rossi</th><th className="px-3 py-3">MVP</th></tr>
                   </thead>
                   <tbody>
                     {individualHistoryStats.map((item) => (
                       <tr key={item.player.id} className="border-b border-slate-900 last:border-0">
                         <td className="px-3 py-3 font-bold">{item.player.name}</td>
-                        <td className="px-3 py-3">{item.presencesCount}</td>
+                        <td className="px-3 py-3">{item.matchesPlayed}</td>
                         <td className="px-3 py-3 font-mono font-black text-emerald-300">{item.averageRating ? item.averageRating.toFixed(2) : "—"}</td>
                         <td className="px-3 py-3">{item.goals}</td><td className="px-3 py-3">{item.assists}</td><td className="px-3 py-3">{item.yellow}</td><td className="px-3 py-3">{item.red}</td><td className="px-3 py-3">{item.mvps ? "🏆 " + item.mvps : "—"}</td>
                       </tr>
