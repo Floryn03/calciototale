@@ -2523,7 +2523,7 @@ Saranno rimossi solo voto, gol, assist, cartellini, MVP e MVS del giocatore. Eve
         };
       })
       .filter((row) => row.appearances || row.goals || row.assists || row.yellow || row.red || row.mvp || row.mvs)
-      .sort((a, b) => b.appearances - a.appearances || a.player.name.localeCompare(b.player.name));
+      .sort((a, b) => (b.average ?? -1) - (a.average ?? -1) || b.appearances - a.appearances || a.player.name.localeCompare(b.player.name));
   }, [eventReportHistoryMatches, matchDiscipline, matchPlayerStats, matchRatings, matchReports, players]);
   const selectedCompetition = selectedCompetitionId
     ? competitions.find((competition) => competition.id === selectedCompetitionId) || null
