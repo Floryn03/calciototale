@@ -366,6 +366,7 @@ export default function Home() {
     useState<GeneratedAdminCredentials | null>(null);
 
   const [players, setPlayers] = useState<Player[]>([]);
+  const [eventReportPlayerLabels, setEventReportPlayerLabels] = useState<Pick<Player, "id" | "name" | "psn_id">[]>([]);
   const [presences, setPresences] = useState<Presence[]>([]);
   const [matchPlayerStats, setMatchPlayerStats] = useState<MatchPlayerStat[]>([]);
   const [matchReports, setMatchReports] = useState<MatchReport[]>([]);
@@ -2002,15 +2003,17 @@ Saranno rimossi solo voto, gol, assist, cartellini, MVP e MVS del giocatore. Eve
 
     setOpenEventReportId(event.id);
     setEventReportLoading(true);
+    setEventReportPlayerLabels([]);
     window.setTimeout(() => document.getElementById("event-report-panel")?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
     void Promise.all([loadMatchHistory(), loadMatchPlayerStats()]);
 
-    const [lineupsResult, reportResult, ratingsResult, statsResult, disciplineResult] = await Promise.all([
+    const [lineupsResult, reportResult, ratingsResult, statsResult, disciplineResult, labelsResult] = await Promise.all([
       supabase.from("event_report_lineups").select("id, event_id, slot_order, position, player_id").eq("event_id", event.id).order("slot_order", { ascending: true }),
       supabase.from("match_reports").select("match_id, opponent, team_score, opponent_score, note, match_mvp_player_id, match_mvs_player_id").eq("match_id", event.id).maybeSingle(),
       supabase.from("match_ratings").select("match_id, player_id, rating").eq("match_id", event.id),
       supabase.from("match_player_stats").select("match_id, player_id, goals, assists").eq("match_id", event.id),
       supabase.from("match_player_discipline").select("match_id, player_id, yellow_cards, red_cards").eq("match_id", event.id),
+      supabase.rpc("event_report_player_labels", { p_event_id: event.id }),
     ]);
 
     if (lineupsResult.error || reportResult.error || ratingsResult.error || statsResult.error || disciplineResult.error) {
@@ -2019,6 +2022,11 @@ Saranno rimossi solo voto, gol, assist, cartellini, MVP e MVS del giocatore. Eve
       setEventReportLoading(false);
       return;
     }
+
+    if (labelsResult.error) {
+      console.error("Errore caricamento ID del referto:", labelsResult.error);
+    }
+    setEventReportPlayerLabels(labelsResult.data || []);
 
     const lineups = (lineupsResult.data || []) as EventReportLineup[];
     const ratings = (ratingsResult.data || []) as MatchRatingRecord[];
@@ -3157,7 +3165,21 @@ Saranno rimossi solo voto, gol, assist, cartellini, MVP e MVS del giocatore. Eve
                             return (
                               <tr key={slotOrder} className="border-t border-slate-800">
                                 <td className="px-3 py-2"><select disabled={!isAdmin} value={draft.position} onChange={(e) => updateEventReportDraft(slotOrder, { position: e.target.value as EventReportPosition })} className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 font-bold text-emerald-300 disabled:cursor-not-allowed">{eventReportPositions.map((role) => <option key={role} value={role}>{role}</option>)}</select></td>
-                                <td className="px-3 py-2"><select disabled={!isAdmin} value={draft.player_id} onChange={(e) => updateEventReportDraft(slotOrder, { player_id: e.target.value })} className="min-w-56 rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 disabled:cursor-not-allowed"><option value="">— Seleziona ID —</option>{[...players].sort((a, b) => a.name.localeCompare(b.name)).map((player) => <option key={player.id} value={player.id}>{player.name}{player.psn_id && player.psn_id !== player.name ? " · " + player.psn_id : ""}</option>)}</select></td>
+                                <td className="px-3 py-2">
+                                  {isAdmin ? (
+                                    <select disabled={!isAdmin} value={draft.player_id} onChange={(e) => updateEventReportDraft(slotOrder, { player_id: e.target.value })} className="min-w-56 rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 disabled:cursor-not-allowed"><option value="">— Seleziona ID —</option>{[...players].sort((a, b) => a.name.localeCompare(b.name)).map((player) => <option key={player.id} value={player.id}>{player.name}{player.psn_id && player.psn_id !== player.name ? " · " + player.psn_id : ""}</option>)}</select>
+                                  ) : (
+                                    <span className="block min-w-56 px-2 py-2 font-semibold text-white">
+                                      {(() => {
+                                        const player = eventReportPlayerLabels.find((item) => item.id === draft.player_id)
+                                          || players.find((item) => item.id === draft.player_id);
+                                        return player
+                                          ? player.name + (player.psn_id && player.psn_id !== player.name ? " · " + player.psn_id : "")
+                                          : draft.player_id ? "ID non disponibile" : "—";
+                                      })()}
+                                    </span>
+                                  )}
+                                </td>
                                 <td className="px-3 py-2"><input disabled={!isAdmin} value={draft.rating} onChange={(e) => updateEventReportDraft(slotOrder, { rating: e.target.value })} className={inputClass} type="number" min="1" max="10" step="0.1" placeholder="—" /></td>
                                 <td className="px-3 py-2"><input disabled={!isAdmin} value={draft.goals} onChange={(e) => updateEventReportDraft(slotOrder, { goals: e.target.value })} className={inputClass} type="number" min="0" max="99" /></td>
                                 <td className="px-3 py-2"><input disabled={!isAdmin} value={draft.assists} onChange={(e) => updateEventReportDraft(slotOrder, { assists: e.target.value })} className={inputClass} type="number" min="0" max="99" /></td>
