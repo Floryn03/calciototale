@@ -4,6 +4,9 @@ import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 import PlayerCard, {
   cardLayoutKeys,
+  extraPhotoSlots,
+  ExtraPhotoSlot,
+  drawExtraCardPhotos,
   CardLayoutKey,
   defaultPlayerCardLayout,
   resolvePlayerCardLayout,
@@ -91,6 +94,7 @@ export default function PlayerProfileModal({
   const [history, setHistory] = useState<WeeklyHistory[]>([]);
   const [showCard, setShowCard] = useState(initialView === "card");
   const [showCardEditor, setShowCardEditor] = useState(false);
+  const [cardRevision, setCardRevision] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -251,6 +255,7 @@ export default function PlayerProfileModal({
       </div>
       {showCard && (
         <PlayerCardViewer
+          key={cardRevision}
           player={player}
           isAdmin={isAdmin}
           onClose={initialView === "card" ? onClose : () => setShowCard(false)}
@@ -261,6 +266,7 @@ export default function PlayerProfileModal({
       {showCardEditor && (
         <PlayerCardEditor
           player={player}
+          onSaved={() => setCardRevision((current) => current + 1)}
           onClose={() => setShowCardEditor(false)}
         />
       )}
@@ -337,6 +343,7 @@ function PlayerCardViewer({
           context.fillText(displayName.slice(0, 2).toUpperCase(), (canvas.width * layout.photo.x) / 100, (canvas.height * layout.photo.y) / 100);
         }
       }
+      await drawExtraCardPhotos(context, card, loadImage);
       if (card.show_ovr) drawText(String(calculateOvr(card)), "ovr", "900 150px Arial");
       if (card.show_role) drawText(player.position, "role", "900 58px Arial");
       if (card.show_number) drawText("#" + player.shirt_number, "number", "900 64px Arial");
@@ -444,9 +451,11 @@ function PlayerCardViewer({
 function PlayerCardEditor({
   player,
   onClose,
+  onSaved,
 }: {
   player: Player;
   onClose: () => void;
+  onSaved: () => void;
 }) {
   const [card, setCard] = useState<PlayerCardData>(emptyPlayerCard());
   const [loading, setLoading] = useState(true);
@@ -511,6 +520,39 @@ function PlayerCardEditor({
     setCard((current) => ({ ...current, photo_url: dataUrl }));
     setMessage("Bot PNG trasparente pronto: premi Salva Player Card.");
   }
+
+  async function handleExtraPhoto(event: ChangeEvent<HTMLInputElement>, key: ExtraPhotoSlot) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+      setMessage("Per le immagini aggiuntive usa PNG, JPG o WebP.");
+      return;
+    }
+    if (file.size > 5_000_000) {
+      setMessage("Ogni immagine aggiuntiva deve pesare al massimo 5 MB.");
+      return;
+    }
+    try {
+      const source = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      await new Promise<void>((resolve, reject) => {
+        const image = new window.Image();
+        image.onload = () => resolve();
+        image.onerror = reject;
+        image.src = source;
+      });
+      setCard((current) => ({ ...current, [`${key}_url`]: source }));
+      setMessage("Immagine pronta: spostala o ridimensionala, poi premi Salva Player Card.");
+    } catch {
+      setMessage("Impossibile leggere questa immagine. Prova un altro file.");
+    }
+  }
+
   async function save() {
     setSaving(true);
     setMessage("");
@@ -521,6 +563,7 @@ function PlayerCardEditor({
         { onConflict: "player_id" },
       );
     setSaving(false);
+    if (!error) onSaved();
     setMessage(
       error ? `Errore Player Card: ${error.message}` : "Player Card salvata.",
     );
@@ -615,6 +658,7 @@ function PlayerCardEditor({
           );
         }
       }
+      await drawExtraCardPhotos(context, card, load);
       const ovr = calculateOvr(card);
       context.fillStyle = "#fff6d5";
       context.strokeStyle = "#18213e";
@@ -727,6 +771,34 @@ function PlayerCardEditor({
                     Rimuovi foto
                   </button>
                 )}
+              </fieldset>
+              <fieldset className="rounded-2xl border border-slate-700 p-4">
+                <legend className="px-2 font-bold text-fuchsia-200">Due immagini aggiuntive</legend>
+                <p className="mb-3 text-sm text-slate-400">Facoltative: logo o foto, PNG, JPG o WebP, massimo 5 MB ciascuna. Trascinale nell’anteprima; usa la rotellina o due dita per ridimensionarle.</p>
+                {extraPhotoSlots.map((key, index) => (
+                  <div key={key} className="mt-4">
+                    <label className="text-sm font-bold">
+                      Immagine aggiuntiva {index + 1}
+                      <input type="file" accept="image/png,image/jpeg,image/webp"
+                        onChange={(event) => void handleExtraPhoto(event, key)}
+                        className="mt-2 block w-full text-sm" />
+                    </label>
+                    {card[`${key}_url`] && <>
+                      <label className="mt-3 block text-sm">
+                        Dimensione immagine {index + 1}
+                        <input type="range" min="35" max="220"
+                          value={resolvePlayerCardLayout(card.layout)[key].scale}
+                          onChange={(event) => updateLayout(key, { scale: Number(event.target.value) })}
+                          className="mt-2 block w-full" />
+                      </label>
+                      <button type="button" className="mt-2 text-sm font-bold text-red-300"
+                        onClick={() => {
+                          setCard((current) => ({ ...current, [`${key}_url`]: null }));
+                          setMessage("Immagine rimossa: premi Salva Player Card.");
+                        }}>Rimuovi immagine {index + 1}</button>
+                    </>}
+                  </div>
+                ))}
               </fieldset>
               <fieldset className="rounded-2xl border border-slate-700 p-4">
                 <legend className="px-2 font-bold text-fuchsia-200">

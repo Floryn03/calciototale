@@ -22,6 +22,8 @@ export const cardLayoutKeys = [
   "dribbling",
   "defending",
   "physical",
+  "extra_photo_1",
+  "extra_photo_2",
 ] as const;
 export type CardLayoutKey = (typeof cardLayoutKeys)[number];
 export type CardLayoutValue = { x: number; y: number; scale: number };
@@ -43,6 +45,8 @@ export const defaultPlayerCardLayout = (): Record<
   dribbling: { x: 60, y: 88.5, scale: 100 },
   defending: { x: 75, y: 88.5, scale: 100 },
   physical: { x: 90, y: 88.5, scale: 100 },
+  extra_photo_1: { x: 22, y: 52, scale: 100 },
+  extra_photo_2: { x: 78, y: 52, scale: 100 },
 });
 
 export function resolvePlayerCardLayout(layout?: PlayerCardLayout | null) {
@@ -58,6 +62,8 @@ export function resolvePlayerCardLayout(layout?: PlayerCardLayout | null) {
 
 export type PlayerCardData = {
   photo_url: string | null;
+  extra_photo_1_url: string | null;
+  extra_photo_2_url: string | null;
   display_name: string | null;
   display_id: string | null;
   ovr_mode: "automatic" | "manual";
@@ -85,6 +91,8 @@ export type PlayerCardData = {
 
 export const emptyPlayerCard = (): PlayerCardData => ({
   photo_url: null,
+  extra_photo_1_url: null,
+  extra_photo_2_url: null,
   display_name: null,
   display_id: null,
   ovr_mode: "automatic",
@@ -109,6 +117,32 @@ export const emptyPlayerCard = (): PlayerCardData => ({
   show_physical: true,
   layout: defaultPlayerCardLayout(),
 });
+
+
+export const extraPhotoSlots = ["extra_photo_1", "extra_photo_2"] as const;
+export type ExtraPhotoSlot = (typeof extraPhotoSlots)[number];
+
+export async function drawExtraCardPhotos(
+  context: CanvasRenderingContext2D,
+  card: PlayerCardData,
+  loadImage: (source: string) => Promise<HTMLImageElement>,
+) {
+  const layout = resolvePlayerCardLayout(card.layout);
+  for (const key of extraPhotoSlots) {
+    const source = card[`${key}_url`];
+    if (!source) continue;
+    const image = await loadImage(source);
+    const position = layout[key];
+    const size = context.canvas.width * 0.24 * position.scale / 100;
+    const ratio = Math.min(size / image.width, size / image.height);
+    const width = image.width * ratio;
+    const height = image.height * ratio;
+    context.drawImage(image,
+      context.canvas.width * position.x / 100 - width / 2,
+      context.canvas.height * position.y / 100 - height / 2,
+      width, height);
+  }
+}
 
 export function calculateOvr(card: PlayerCardData) {
   if (card.ovr_mode === "manual" && card.manual_ovr !== null)
@@ -310,6 +344,30 @@ const PlayerCard = forwardRef<
           )}
         </CardItem>
       )}
+      {extraPhotoSlots.map((key, index) => card[`${key}_url`] ? (
+        <CardItem
+          key={key}
+          editable={editable}
+          layoutKey={key}
+          value={layout[key]}
+          onChange={onLayoutChange}
+          style={{
+            left: `${layout[key].x}%`,
+            top: `${layout[key].y}%`,
+            width: `${24 * layout[key].scale / 100}%`,
+            height: `${16 * layout[key].scale / 100}%`,
+            transform: "translate(-50%, -50%)",
+          }}
+          className="absolute z-20"
+        >
+          <img
+            src={card[`${key}_url`]!}
+            alt={`Immagine aggiuntiva ${index + 1}`}
+            draggable={false}
+            className="pointer-events-none h-full w-full object-contain"
+          />
+        </CardItem>
+      ) : null)}
       {card.show_ovr && (
         <CardItem
           editable={editable}
