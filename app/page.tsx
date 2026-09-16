@@ -3187,8 +3187,44 @@ Saranno rimossi solo voto, gol, assist, cartellini, MVP e MVS del giocatore. Eve
                                 <td className="px-3 py-2"><input disabled={!isAdmin} value={draft.assists} onChange={(e) => updateEventReportDraft(slotOrder, { assists: e.target.value })} className={inputClass} type="number" min="0" max="99" /></td>
                                 <td className="px-3 py-2"><input disabled={!isAdmin} value={draft.yellow} onChange={(e) => updateEventReportDraft(slotOrder, { yellow: e.target.value })} className={inputClass} type="number" min="0" max="9" /></td>
                                 <td className="px-3 py-2"><input disabled={!isAdmin} value={draft.red} onChange={(e) => updateEventReportDraft(slotOrder, { red: e.target.value })} className={inputClass} type="number" min="0" max="9" /></td>
-                                <td className="px-3 py-2"><input disabled={!isAdmin || !draft.player_id} checked={eventReportMvpPlayerId === draft.player_id && Boolean(draft.player_id)} onChange={() => setEventReportMvpPlayerId(eventReportMvpPlayerId === draft.player_id ? "" : draft.player_id)} className="h-5 w-5 accent-emerald-400" type="radio" name="event-report-mvp" /></td>
-                                <td className="px-3 py-2"><input disabled={!isAdmin || !draft.player_id} checked={eventReportMvsPlayerId === draft.player_id && Boolean(draft.player_id)} onChange={() => setEventReportMvsPlayerId(eventReportMvsPlayerId === draft.player_id ? "" : draft.player_id)} className="h-5 w-5 accent-sky-400" type="radio" name="event-report-mvs" /></td>
+                                <td className="px-3 py-2">
+                                  <button
+                                    type="button"
+                                    disabled={!isAdmin || !draft.player_id}
+                                    aria-label={`MVP — riga ${slotOrder}`}
+                                    aria-pressed={eventReportMvpPlayerId === draft.player_id && Boolean(draft.player_id)}
+                                    title={eventReportMvpPlayerId === draft.player_id && Boolean(draft.player_id) ? "Rimuovi MVP" : "Assegna MVP"}
+                                    onClick={() => setEventReportMvpPlayerId((current) => current === draft.player_id ? "" : draft.player_id)}
+                                    className="flex h-10 w-10 items-center justify-center rounded-lg hover:bg-slate-800 disabled:cursor-not-allowed"
+                                  >
+                                    {eventReportMvpPlayerId === draft.player_id && Boolean(draft.player_id) ? (
+                                      <svg viewBox="0 0 24 24" aria-hidden="true" className="h-7 w-7 text-amber-300" fill="currentColor">
+                                        <path d="M7 2h10v3h4v3a5 5 0 0 1-5 5h-.03A5 5 0 0 1 13 15.9V19h4v3H7v-3h4v-3.1A5 5 0 0 1 8.03 13H8a5 5 0 0 1-5-5V5h4V2Zm0 5H5v1a3 3 0 0 0 2.1 2.86A5 5 0 0 1 7 10V7Zm10 0v3c0 .3-.03.59-.1.86A3 3 0 0 0 19 8V7h-2Z" />
+                                      </svg>
+                                    ) : (
+                                      <span aria-hidden="true" className="h-5 w-5 rounded-full border-2 border-slate-400 bg-slate-100" />
+                                    )}
+                                  </button>
+                                </td>
+                                <td className="px-3 py-2">
+                                  <button
+                                    type="button"
+                                    disabled={!isAdmin || !draft.player_id}
+                                    aria-label={`MVS — riga ${slotOrder}`}
+                                    aria-pressed={eventReportMvsPlayerId === draft.player_id && Boolean(draft.player_id)}
+                                    title={eventReportMvsPlayerId === draft.player_id && Boolean(draft.player_id) ? "Rimuovi MVS" : "Assegna MVS"}
+                                    onClick={() => setEventReportMvsPlayerId((current) => current === draft.player_id ? "" : draft.player_id)}
+                                    className="flex h-10 w-10 items-center justify-center rounded-lg hover:bg-slate-800 disabled:cursor-not-allowed"
+                                  >
+                                    {eventReportMvsPlayerId === draft.player_id && Boolean(draft.player_id) ? (
+                                      <svg viewBox="0 0 24 24" aria-hidden="true" className="h-7 w-7 text-slate-300" fill="currentColor">
+                                        <path d="M7 2h10v3h4v3a5 5 0 0 1-5 5h-.03A5 5 0 0 1 13 15.9V19h4v3H7v-3h4v-3.1A5 5 0 0 1 8.03 13H8a5 5 0 0 1-5-5V5h4V2Zm0 5H5v1a3 3 0 0 0 2.1 2.86A5 5 0 0 1 7 10V7Zm10 0v3c0 .3-.03.59-.1.86A3 3 0 0 0 19 8V7h-2Z" />
+                                      </svg>
+                                    ) : (
+                                      <span aria-hidden="true" className="h-5 w-5 rounded-full border-2 border-slate-400 bg-slate-100" />
+                                    )}
+                                  </button>
+                                </td>
                               </tr>
                             );
                           })}
