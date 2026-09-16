@@ -1380,7 +1380,9 @@ export default function Home() {
   }).sort((a, b) => {
     const aOrder = individualStatsPlayerOrder.indexOf(a.player.name);
     const bOrder = individualStatsPlayerOrder.indexOf(b.player.name);
-    return (aOrder === -1 ? Number.MAX_SAFE_INTEGER : aOrder)
+    return b.matchesPlayed - a.matchesPlayed
+      || (b.averageRating ?? -1) - (a.averageRating ?? -1)
+      || (aOrder === -1 ? Number.MAX_SAFE_INTEGER : aOrder)
       - (bOrder === -1 ? Number.MAX_SAFE_INTEGER : bOrder)
       || a.player.name.localeCompare(b.player.name, "it");
   }), [players, matchRatings, matchPlayerStats, historyPresences, matchDiscipline, matchReports, archivedMatchHistory]);
