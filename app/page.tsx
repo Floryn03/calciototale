@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import Image from "next/image";
 import { supabase } from "../lib/supabase";
 import VotingHub from "../components/VotingHub";
@@ -174,6 +174,15 @@ type HistoryPresence = {
   event_role: PresenceRole | null;
 };
 
+type DashboardAwardEntry = {
+  player_id: string;
+  player_name: string;
+  yellow: number;
+  red: number;
+  mvp: number;
+  mvs: number;
+};
+
 type LeaderboardEntry = {
   player_id: string;
   player_name: string;
@@ -336,6 +345,8 @@ function adminLoginEmail(loginId: string) {
 
 export default function Home() {
   const [activeSection, setActiveSection] = useState("dashboard");
+  const [dashboardAwards, setDashboardAwards] = useState<DashboardAwardEntry[]>([]);
+  const [dashboardAwardsError, setDashboardAwardsError] = useState(false);
 
   // =========================================================
   // ADMIN AUTHENTICATION
@@ -1290,6 +1301,25 @@ export default function Home() {
   ).length;
 
   const inactivePlayers = players.length - activePlayers;
+
+  useEffect(() => {
+    if (activeSection !== "dashboard") return;
+    let cancelled = false;
+    void (async () => {
+      const { data, error } = await supabase.rpc("dashboard_award_totals");
+      if (cancelled) return;
+      setDashboardAwardsError(Boolean(error));
+      setDashboardAwards(error ? [] : (data || []) as DashboardAwardEntry[]);
+    })();
+    return () => { cancelled = true; };
+  }, [activeSection, isAdmin, sessionPlayerId]);
+
+  const awardLeaderboards = useMemo(() => {
+    const sorted = (key: "yellow" | "red" | "mvp" | "mvs") =>
+      dashboardAwards.filter((entry) => Number(entry[key]) > 0)
+        .sort((a, b) => Number(b[key]) - Number(a[key]) || a.player_name.localeCompare(b.player_name, "it"));
+    return { yellow: sorted("yellow"), red: sorted("red"), mvp: sorted("mvp"), mvs: sorted("mvs") };
+  }, [dashboardAwards]);
 
   const leaderboardEntries = useMemo<LeaderboardEntry[]>(() => {
     const totals = new Map<string, { goals: number; assists: number }>();
@@ -2769,6 +2799,25 @@ Saranno rimossi solo voto, gol, assist, cartellini, MVP e MVS del giocatore. Eve
                 valueLabel="assist"
                 accent="sky"
               />
+            </div>
+
+            <div className="mt-6 grid gap-6 lg:grid-cols-2">
+              <LeaderboardCard icon="🟨" title="Classifica gialli"
+                description="Cartellini gialli nei referti salvati"
+                entries={awardLeaderboards.yellow} valueKey="yellow" valueLabel="gialli"
+                accent="amber" error={dashboardAwardsError} />
+              <LeaderboardCard icon="🟥" title="Classifica rossi"
+                description="Cartellini rossi nei referti salvati"
+                entries={awardLeaderboards.red} valueKey="red" valueLabel="rossi"
+                accent="red" error={dashboardAwardsError} />
+              <LeaderboardCard icon={<DashboardTrophy />} title="Classifica MVP"
+                description="Premi MVP nei referti salvati"
+                entries={awardLeaderboards.mvp} valueKey="mvp" valueLabel="MVP"
+                valueIcon={<DashboardTrophy />} accent="amber" error={dashboardAwardsError} />
+              <LeaderboardCard icon={<DashboardTrophy silver />} title="Classifica MVS"
+                description="Premi MVS nei referti salvati"
+                entries={awardLeaderboards.mvs} valueKey="mvs" valueLabel="MVS"
+                valueIcon={<DashboardTrophy silver />} accent="silver" error={dashboardAwardsError} />
             </div>
 
             <div className="mt-12 grid gap-6 lg:grid-cols-2">
@@ -5009,7 +5058,14 @@ function Input({
   );
 }
 
-function LeaderboardCard({
+function DashboardTrophy({ silver = false }: { silver?: boolean }) {
+  return <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"
+    className={`inline-block h-5 w-5 align-middle ${silver ? "text-slate-300" : "text-amber-300"}`}>
+    <path d="M7 2h10v3h4v3a5 5 0 0 1-5 5h-.03A5 5 0 0 1 13 15.9V19h4v3H7v-3h4v-3.1A5 5 0 0 1 8.03 13H8a5 5 0 0 1-5-5V5h4V2Zm0 5H5v1a3 3 0 0 0 2.1 2.86A5 5 0 0 1 7 10V7Zm10 0v3c0 .3-.03.59-.1.86A3 3 0 0 0 19 8V7h-2Z" />
+  </svg>;
+}
+
+function LeaderboardCard<K extends string>({
   icon,
   title,
   description,
@@ -5017,14 +5073,18 @@ function LeaderboardCard({
   valueKey,
   valueLabel,
   accent,
+  valueIcon,
+  error = false,
 }: {
-  icon: string;
+  icon: ReactNode;
   title: string;
   description: string;
-  entries: LeaderboardEntry[];
-  valueKey: "goals" | "assists";
+  entries: ({ player_id: string; player_name: string } & Record<K, number>)[];
+  valueKey: K;
   valueLabel: string;
-  accent: "amber" | "sky";
+  valueIcon?: ReactNode;
+  error?: boolean;
+  accent: "amber" | "sky" | "red" | "silver";
 }) {
   const accentStyles = accent === "amber"
     ? {
@@ -5032,6 +5092,10 @@ function LeaderboardCard({
         badge: "bg-amber-400/10 text-amber-300",
         rank: "text-amber-300",
       }
+    : accent === "red"
+    ? { border: "border-red-400/25", badge: "bg-red-400/10 text-red-300", rank: "text-red-300" }
+    : accent === "silver"
+    ? { border: "border-slate-400/25", badge: "bg-slate-400/10 text-slate-300", rank: "text-slate-300" }
     : {
         border: "border-sky-400/25",
         badge: "bg-sky-400/10 text-sky-300",
@@ -5052,9 +5116,11 @@ function LeaderboardCard({
         </span>
       </div>
 
-      {entries.length === 0 ? (
+      {error ? (
+        <p className="mt-5 rounded-2xl bg-slate-950 p-4 text-sm text-slate-400">Classifica non disponibile. Riprova tra poco.</p>
+      ) : entries.length === 0 ? (
         <p className="mt-5 rounded-2xl bg-slate-950 p-4 text-sm text-slate-500">
-          Nessun {valueLabel} registrato ancora.
+          {valueKey === "yellow" ? "Nessun cartellino giallo registrato ancora." : valueKey === "red" ? "Nessun cartellino rosso registrato ancora." : `Nessun ${valueLabel} registrato ancora.`}
         </p>
       ) : (
         <ol className="mt-5 space-y-2">
@@ -5070,7 +5136,7 @@ function LeaderboardCard({
                 <span className="truncate font-bold">{entry.player_name}</span>
               </div>
               <span className={`shrink-0 rounded-lg px-3 py-1 font-black ${accentStyles.badge}`}>
-                {entry[valueKey]} {valueLabel}
+                {entry[valueKey]} {valueIcon || valueLabel}
               </span>
             </li>
           ))}
