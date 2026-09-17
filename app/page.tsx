@@ -1376,7 +1376,9 @@ export default function Home() {
       + archivedRows.reduce((total, item) => total + Number(item.red || 0), 0);
     const mvps = matchReports.filter((report) => report.match_mvp_player_id === player.id).length
       + archivedMatchHistory.filter((archive) => archive.match_mvp_player_id === player.id).length;
-    return { player, matchesPlayed, averageRating, goals, assists, yellow, red, mvps };
+    const mvss = matchReports.filter((report) => report.match_mvs_player_id === player.id).length
+      + archivedMatchHistory.filter((archive) => archive.match_mvs_player_id === player.id).length;
+    return { player, matchesPlayed, averageRating, goals, assists, yellow, red, mvps, mvss };
   }).sort((a, b) => {
     const aOrder = individualStatsPlayerOrder.indexOf(a.player.name);
     const bOrder = individualStatsPlayerOrder.indexOf(b.player.name);
@@ -4293,7 +4295,7 @@ Saranno rimossi solo voto, gol, assist, cartellini, MVP e MVS del giocatore. Eve
               <div className="mt-5 overflow-x-auto">
                 <table className="min-w-[980px] w-full text-left text-sm">
                   <thead className="border-b border-slate-800 text-slate-400">
-                    <tr><th className="px-3 py-3">Giocatore</th><th className="px-3 py-3">Partite giocate</th><th className="px-3 py-3">Media</th><th className="px-3 py-3">Gol</th><th className="px-3 py-3">Assist</th><th className="px-3 py-3">Gialli</th><th className="px-3 py-3">Rossi</th><th className="px-3 py-3">MVP</th>{isAdmin && <th className="px-3 py-3">Azioni</th>}</tr>
+                    <tr><th className="px-3 py-3">Giocatore</th><th className="px-3 py-3">Partite giocate</th><th className="px-3 py-3">Media</th><th className="px-3 py-3">Gol</th><th className="px-3 py-3">Assist</th><th className="px-3 py-3">Gialli</th><th className="px-3 py-3">Rossi</th><th className="px-3 py-3">MVP</th><th className="px-3 py-3">MVS</th>{isAdmin && <th className="px-3 py-3">Azioni</th>}</tr>
                   </thead>
                   <tbody>
                     {individualHistoryStats.map((item) => (
@@ -4301,7 +4303,7 @@ Saranno rimossi solo voto, gol, assist, cartellini, MVP e MVS del giocatore. Eve
                         <td className="px-3 py-3 font-bold">{item.player.name}</td>
                         <td className="px-3 py-3">{item.matchesPlayed}</td>
                         <td className="px-3 py-3 font-mono font-black text-emerald-300">{item.averageRating ? item.averageRating.toFixed(2) : "—"}</td>
-                        <td className="px-3 py-3">{item.goals}</td><td className="px-3 py-3">{item.assists}</td><td className="px-3 py-3">{item.yellow}</td><td className="px-3 py-3">{item.red}</td><td className="px-3 py-3">{item.mvps ? "🏆 " + item.mvps : "—"}</td>
+                        <td className="px-3 py-3">{item.goals}</td><td className="px-3 py-3">{item.assists}</td><td className="px-3 py-3">{item.yellow}</td><td className="px-3 py-3">{item.red}</td><td className="px-3 py-3">{item.mvps ? "🏆 " + item.mvps : "—"}</td><td className="px-3 py-3">{item.mvss ? <span className="inline-flex items-center gap-1 whitespace-nowrap">{item.mvss}<svg viewBox="0 0 24 24" role="img" aria-label="Coppa argento MVS" className="h-4 w-4 text-slate-300" fill="currentColor"><path d="M7 2h10v3h4v3a5 5 0 0 1-5 5h-.03A5 5 0 0 1 13 15.9V19h4v3H7v-3h4v-3.1A5 5 0 0 1 8.03 13H8a5 5 0 0 1-5-5V5h4V2Zm0 5H5v1a3 3 0 0 0 2.1 2.86A5 5 0 0 1 7 10V7Zm10 0v3c0 .3-.03.59-.1.86A3 3 0 0 0 19 8V7h-2Z" /></svg></span> : "—"}</td>
                         {isAdmin && <td className="px-3 py-3"><div className="flex gap-2"><button type="button" onClick={() => editIndividualStats(item.player)} className="rounded-lg border border-sky-500/40 px-3 py-2 text-xs font-bold text-sky-200 hover:bg-sky-500/10">✏️ Modifica</button><button type="button" onClick={() => void resetIndividualStats(item.player)} className="rounded-lg border border-red-500/40 px-3 py-2 text-xs font-bold text-red-300 hover:bg-red-500/10">↺ Azzera</button></div></td>}
                       </tr>
                     ))}
