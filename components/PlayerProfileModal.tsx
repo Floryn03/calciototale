@@ -263,7 +263,7 @@ export default function PlayerProfileModal({
           onEdit={() => setShowCardEditor(true)}
         />
       )}
-      {showCardEditor && (
+      {isAdmin && showCardEditor && (
         <PlayerCardEditor
           player={player}
           onSaved={() => setCardRevision((current) => current + 1)}

@@ -1068,13 +1068,14 @@ export default function Home() {
     }, 0);
 
     return () => window.clearTimeout(presenceLoad);
-  }, [loadPresences]);
+  }, [loadPresences, isAdmin, sessionPlayerId]);
 
   // =========================================================
   // PLAYER FORM
   // =========================================================
 
   function openPlayerForm() {
+    if (!isAdmin) return;
     setEditingPlayer(null);
     setName("");
     setPsnId("");
@@ -1087,6 +1088,7 @@ export default function Home() {
   }
 
   function openEditPlayer(player: Player) {
+    if (!isAdmin) return;
     setEditingPlayer(player);
     setName(player.name);
     setPsnId(player.psn_id);
@@ -1121,6 +1123,7 @@ export default function Home() {
   // =========================================================
 
   async function savePlayer() {
+    if (!isAdmin) return;
     if (!name.trim()) {
       alert("Inserisci il nome del giocatore.");
       return;
@@ -1213,6 +1216,7 @@ export default function Home() {
   // =========================================================
 
   async function deletePlayer(player: Player) {
+    if (!isAdmin) return;
     const confirmed = window.confirm(
       `Vuoi eliminare definitivamente ${player.name}?`
     );
@@ -1243,6 +1247,7 @@ export default function Home() {
   // =========================================================
 
   async function togglePlayerStatus(player: Player) {
+    if (!isAdmin) return;
     const newStatus =
       player.status === "Attivo" ? "Inattivo" : "Attivo";
 
@@ -1432,6 +1437,7 @@ export default function Home() {
   }
 
   function openPresenceRolePicker(player: Player) {
+    if (!isAdmin && player.id !== sessionPlayerId) return;
     const existing = getPresence(player.id);
     setPresenceRoleDrafts((current) => ({
       ...current,
@@ -1451,6 +1457,7 @@ export default function Home() {
   }
 
   async function savePresenceNote(player: Player, noteOverride?: string) {
+    if (!isAdmin) return;
     const presence = getPresence(player.id);
     if (!presence) return;
 
@@ -1528,6 +1535,7 @@ export default function Home() {
     newStatus: string,
     eventRole: PresenceRole | null = null
   ) {
+    if (!isAdmin && player.id !== sessionPlayerId) return;
     if (!selectedEventId) {
       alert("Seleziona prima un evento.");
       return;
@@ -1598,6 +1606,7 @@ export default function Home() {
   }
 
   async function resetSelectedEventPresences() {
+    if (!isAdmin) return;
     if (!selectedEventId) {
       alert("Seleziona prima un evento nella sezione Presenze.");
       return;
@@ -1990,6 +1999,7 @@ Saranno rimossi solo voto, gol, assist, cartellini, MVP e MVS del giocatore. Eve
   }
 
   async function saveDiscipline(matchId: string, playerId: string) {
+    if (!isAdmin) return;
     const key = matchId + ":" + playerId;
     const draft = disciplineDrafts[key] || { yellow: "0", red: "0" };
     const yellow = Number(draft.yellow || 0);
@@ -2510,14 +2520,12 @@ Saranno rimossi solo voto, gol, assist, cartellini, MVP e MVS del giocatore. Eve
     ? menu
     : isPlayer
       ? menu.filter((item) =>
-          ["dashboard", "presences", "events", "calendar", "competitions", "votes", "mvp", "stats"].includes(item.id)
+          ["dashboard", "players", "presences", "events", "calendar", "competitions", "votes", "mvp", "stats"].includes(item.id)
         )
       : menu.filter((item) =>
           ["dashboard", "events", "votes", "mvp"].includes(item.id)
         );
-  const presencePlayers = isPlayer
-    ? players.filter((player) => player.id === sessionPlayerId)
-    : players;
+  const presencePlayers = players;
   const presenceDepartments = [
     { title: "🧤 CT | PORTIERI", positions: ["POR"] },
     { title: "🛡️ CT | DIFESA", positions: ["DCC", "DCS", "DCD"] },
@@ -2970,7 +2978,7 @@ Saranno rimossi solo voto, gol, assist, cartellini, MVP e MVS del giocatore. Eve
               onButton={isAdmin ? openPlayerForm : undefined}
             />
 
-            {showPlayerForm && (
+            {isAdmin && showPlayerForm && (
               <div className="mb-8 rounded-3xl border border-emerald-500/40 bg-slate-900 p-7">
 
                 <div className="mb-7 flex items-center justify-between">
@@ -4123,7 +4131,7 @@ Saranno rimossi solo voto, gol, assist, cartellini, MVP e MVS del giocatore. Eve
 
                 {isAdmin && editingCompetitionId === selectedCompetition.id && <div className="mt-5 grid gap-3 rounded-2xl border border-emerald-500/25 bg-slate-950 p-4 sm:grid-cols-3"><Input label="Nome competizione" value={editingCompetitionName} onChange={setEditingCompetitionName} /><div><label className="mb-2 block text-sm font-semibold">Tipo</label><select value={editingCompetitionType} onChange={(event) => setEditingCompetitionType(event.target.value)} className="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3"><option>Campionato</option><option>Torneo</option><option>Cup</option><option>Amichevole</option><option>Lega</option></select></div><div className="flex items-end gap-2"><button type="button" disabled={competitionSaving} onClick={() => void saveCompetitionDetails(selectedCompetition)} className="rounded-xl bg-emerald-500 px-4 py-3 font-black text-slate-950">💾 Salva</button><button type="button" onClick={() => setEditingCompetitionId(null)} className="rounded-xl border border-slate-700 px-4 py-3 font-bold text-slate-300">Annulla</button></div></div>}
 
-                {isAdmin && <div className="mt-6 rounded-2xl bg-slate-950 p-4"><p className="font-black">Squadre partecipanti</p><div className="mt-3 flex flex-wrap gap-2">{selectedCompetitionTeams.map((team) => <span key={team.id} className={(team.is_calcio_totale ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200" : "border-slate-700 text-slate-300") + " rounded-lg border px-3 py-2 text-sm font-bold"}>{team.name}{selectedCompetition.format === "Torneo Serale" && <small className="ml-2 text-slate-400">{team.group_name || "Senza girone"}</small>}</span>)}</div><div className="mt-4 flex flex-col gap-2 sm:flex-row"><input value={newCompetitionTeamName} onChange={(event) => setNewCompetitionTeamName(event.target.value)} placeholder="Nome avversario" className="min-h-11 flex-1 rounded-xl border border-slate-700 bg-slate-900 px-4 text-white" />{selectedCompetition.format === "Torneo Serale" && <select value={newCompetitionTeamGroup} onChange={(event) => setNewCompetitionTeamGroup(event.target.value)} className="min-h-11 rounded-xl border border-slate-700 bg-slate-900 px-3"><option>Girone 1</option><option>Girone 2</option><option>Girone 3</option></select>}<button type="button" onClick={() => void addCompetitionTeam(selectedCompetition)} className="min-h-11 rounded-xl border border-emerald-500/40 px-4 font-bold text-emerald-300 hover:bg-emerald-500/10">➕ Aggiungi squadra</button></div></div>}
+                {<div className="mt-6 rounded-2xl bg-slate-950 p-4"><p className="font-black">Squadre partecipanti</p><div className="mt-3 flex flex-wrap gap-2">{selectedCompetitionTeams.map((team) => <span key={team.id} className={(team.is_calcio_totale ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200" : "border-slate-700 text-slate-300") + " rounded-lg border px-3 py-2 text-sm font-bold"}>{team.name}{selectedCompetition.format === "Torneo Serale" && <small className="ml-2 text-slate-400">{team.group_name || "Senza girone"}</small>}</span>)}</div>{isAdmin && <div className="mt-4 flex flex-col gap-2 sm:flex-row"><input value={newCompetitionTeamName} onChange={(event) => setNewCompetitionTeamName(event.target.value)} placeholder="Nome avversario" className="min-h-11 flex-1 rounded-xl border border-slate-700 bg-slate-900 px-4 text-white" />{selectedCompetition.format === "Torneo Serale" && <select value={newCompetitionTeamGroup} onChange={(event) => setNewCompetitionTeamGroup(event.target.value)} className="min-h-11 rounded-xl border border-slate-700 bg-slate-900 px-3"><option>Girone 1</option><option>Girone 2</option><option>Girone 3</option></select>}<button type="button" onClick={() => void addCompetitionTeam(selectedCompetition)} className="min-h-11 rounded-xl border border-emerald-500/40 px-4 font-bold text-emerald-300 hover:bg-emerald-500/10">➕ Aggiungi squadra</button></div>}</div>}
 
                 {selectedCompetition.format === "Campionato" ? <>{isAdmin && <button type="button" disabled={competitionSaving} onClick={() => void generateLeagueCalendar(selectedCompetition)} className="mt-5 rounded-xl bg-emerald-500 px-5 py-3 font-black text-slate-950 disabled:opacity-60">🗓️ Genera calendario andata e ritorno</button>}<CompetitionStandings rows={selectedCompetitionStandings} /><CompetitionMatchesTable matches={selectedCompetitionMatches} teams={selectedCompetitionTeams} isAdmin={isAdmin} onSave={(match, home, away) => void saveCompetitionMatch(match, home, away)} /></> : <>{isAdmin && <div className="mt-6 grid gap-3 rounded-2xl bg-slate-950 p-4 sm:grid-cols-2 lg:grid-cols-6"><div><label className="mb-1 block text-xs font-bold text-slate-400">Fase</label><select value={manualMatchPhase} onChange={(event) => setManualMatchPhase(event.target.value)} className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2">{tournamentPhases.map((phase) => <option key={phase}>{phase}</option>)}</select></div>{manualMatchPhase === "Girone" && <div><label className="mb-1 block text-xs font-bold text-slate-400">Girone</label><select value={manualMatchGroup} onChange={(event) => setManualMatchGroup(event.target.value)} className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2"><option>Girone 1</option><option>Girone 2</option><option>Girone 3</option></select></div>}<Input label="Giornata" value={manualMatchRound} onChange={setManualMatchRound} type="number" /><div><label className="mb-1 block text-xs font-bold text-slate-400">Squadra casa</label><select value={manualMatchHomeTeamId} onChange={(event) => setManualMatchHomeTeamId(event.target.value)} className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2"><option value="">Seleziona</option>{selectedCompetitionTeams.filter((team) => manualMatchPhase !== "Girone" || team.group_name === manualMatchGroup).map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</select></div><div><label className="mb-1 block text-xs font-bold text-slate-400">Squadra ospite</label><select value={manualMatchAwayTeamId} onChange={(event) => setManualMatchAwayTeamId(event.target.value)} className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2"><option value="">Seleziona</option>{selectedCompetitionTeams.filter((team) => (manualMatchPhase !== "Girone" || team.group_name === manualMatchGroup) && team.id !== manualMatchHomeTeamId).map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</select></div><Input label="Data" value={manualMatchDate} onChange={setManualMatchDate} type="date" /><div className="flex items-end"><button type="button" onClick={() => void addTournamentMatch(selectedCompetition)} className="w-full rounded-xl bg-emerald-500 px-4 py-3 font-black text-slate-950">➕ Aggiungi</button></div></div>}<div className="grid gap-5 lg:grid-cols-3">{tournamentGroupStandings.map(({ groupName, rows }) => <CompetitionStandings key={groupName} title={"📊 " + groupName} rows={rows} qualifiedCount={2} />)}</div><CompetitionMatchesTable matches={selectedCompetitionMatches} teams={selectedCompetitionTeams} isAdmin={isAdmin} onSave={(match, home, away) => void saveCompetitionMatch(match, home, away)} /></>}
               </section>}
@@ -4361,10 +4369,10 @@ Saranno rimossi solo voto, gol, assist, cartellini, MVP e MVS del giocatore. Eve
               </div>
             </section>
 
-            {isAdmin && archivedMatchHistory.length > 0 && (
+            {(isAdmin || isPlayer) && archivedMatchHistory.length > 0 && (
               <section className="mt-8 rounded-3xl border border-amber-400/30 bg-slate-900 p-5 sm:p-7">
                 <h3 className="text-xl font-black">🗄️ Storico salvato di eventi eliminati</h3>
-                <p className="mt-1 text-sm text-slate-400">Queste statistiche rimangono valide anche se l’evento è stato eliminato. Solo qui puoi cancellarle definitivamente.</p>
+                <p className="mt-1 text-sm text-slate-400">Queste statistiche rimangono valide anche se l’evento è stato eliminato.{isAdmin ? " Solo qui puoi cancellarle definitivamente." : ""}</p>
                 <div className="mt-5 space-y-3">
                   {archivedMatchHistory.map((archive) => (
                     <div key={archive.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
@@ -4372,9 +4380,9 @@ Saranno rimossi solo voto, gol, assist, cartellini, MVP e MVS del giocatore. Eve
                         <p className="font-bold">{archive.event_date} · {archive.event_name}</p>
                         <p className="text-sm text-slate-400">Calcio Totale vs {archive.opponent} · {archive.team_score} - {archive.opponent_score}</p>
                       </div>
-                      <button type="button" onClick={() => void deleteArchivedMatchHistory(archive)} className="rounded-xl border border-red-500/40 px-4 py-2 text-sm font-bold text-red-300 hover:bg-red-500/10">
+                      {isAdmin && <button type="button" onClick={() => void deleteArchivedMatchHistory(archive)} className="rounded-xl border border-red-500/40 px-4 py-2 text-sm font-bold text-red-300 hover:bg-red-500/10">
                         🗑️ Cancella definitivamente
-                      </button>
+                      </button>}
                     </div>
                   ))}
                 </div>
