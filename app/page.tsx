@@ -5,6 +5,7 @@ import Image from "next/image";
 import { supabase } from "../lib/supabase";
 import VotingHub from "../components/VotingHub";
 import TeamRoom from "../components/TeamRoom";
+import GoalkeeperLeaderboard from "../components/GoalkeeperLeaderboard";
 import PlayerProfileModal from "../components/PlayerProfileModal";
 
 type Player = {
@@ -2819,6 +2820,7 @@ Saranno rimossi solo voto, gol, assist, cartellini, MVP e MVS del giocatore. Eve
                 description="Cartellini rossi nei referti salvati"
                 entries={awardLeaderboards.red} valueKey="red" valueLabel="rossi"
                 accent="red" error={dashboardAwardsError} />
+              <GoalkeeperLeaderboard />
               <LeaderboardCard icon={<DashboardTrophy />} title="Classifica MVP"
                 description="Premi MVP nei referti salvati"
                 entries={awardLeaderboards.mvp} valueKey="mvp" valueLabel="MVP"

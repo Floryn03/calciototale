@@ -1,0 +1,11 @@
+const fs=require('fs'),path=require('path'),ts=require('typescript'),React=require('react'),assert=require('assert/strict');
+const {renderToStaticMarkup}=require('react-dom/server');
+const source=fs.readFileSync(path.join(__dirname,'..','components/GoalkeeperLeaderboard.tsx'),'utf8');
+const js=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,target:ts.ScriptTarget.ES2020}}).outputText;
+const m={exports:{}};new Function('require','module','exports',js)(id=>id==='../lib/supabase'?{supabase:{}}:require(id),m,m.exports);
+const card=(props)=>renderToStaticMarkup(React.createElement(m.exports.GoalkeeperLeaderboardCard,props));
+const entries=[{player_id:'c',player_name:'Portiere C',matches_played:2,clean_sheets:2},{player_id:'b',player_name:'Portiere B',matches_played:6,clean_sheets:2},{player_id:'a',player_name:'Portiere A',matches_played:6,clean_sheets:3}];
+const html=card({entries});assert(html.indexOf('Portiere A')<html.indexOf('Portiere B'));assert(html.indexOf('Portiere B')<html.indexOf('Portiere C'));assert.equal(entries[0].player_id,'c');
+assert(card({entries:[]}).includes('Nessuna partita in porta'));assert(card({entries,loading:true}).includes('Caricamento'));assert(!card({entries,error:true}).includes('Portiere A'));assert(card({entries,error:true}).includes('non disponibile'));
+const page=fs.readFileSync(path.join(__dirname,'..','app/page.tsx'),'utf8');assert(page.indexOf('<GoalkeeperLeaderboard />')<page.indexOf('title="Classifica MVP"'));
+console.log('PASS: goalkeeper ranking and display states');
