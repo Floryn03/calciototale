@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import Image from "next/image";
 import { supabase } from "../lib/supabase";
 import VotingHub from "../components/VotingHub";
+import TeamRoom from "../components/TeamRoom";
 import PlayerProfileModal from "../components/PlayerProfileModal";
 
 type Player = {
@@ -295,7 +296,7 @@ const menu = [
   { id: "presences", label: "Presenze", icon: "✅" },
   { id: "events", label: "Eventi", icon: "📅" },
   { id: "calendar", label: "Calendario", icon: "🗓️" },
-  { id: "competitions", label: "Competizioni", icon: "🏆" },
+  { id: "competitions", label: "Spogliatoio", icon: "🔥" },
   { id: "votes", label: "Votazioni", icon: "⭐" },
   { id: "mvp", label: "MVP", icon: "👑" },
   { id: "stats", label: "Statistiche", icon: "📊" },
@@ -2512,8 +2513,8 @@ Saranno rimossi solo voto, gol, assist, cartellini, MVP e MVS del giocatore. Eve
   }
 
   useEffect(() => {
-    if (activeSection === "competitions") void loadCompetitions();
-  }, [activeSection, loadCompetitions]);
+    if (activeSection === "competition-archive" && isAdmin) void loadCompetitions();
+  }, [activeSection, isAdmin, loadCompetitions]);
 
   const isPlayer = Boolean(sessionPlayerId) && !isAdmin;
   const visibleMenu = isAdmin
@@ -2919,8 +2920,8 @@ Saranno rimossi solo voto, gol, assist, cartellini, MVP e MVS del giocatore. Eve
 
                   {isAdmin && (
                     <QuickButton
-                      icon="🏆"
-                      text="Competizioni"
+                      icon="🔥"
+                      text="Spogliatoio"
                       onClick={() =>
                         setActiveSection("competitions")
                       }
@@ -4100,7 +4101,11 @@ Saranno rimossi solo voto, gol, assist, cartellini, MVP e MVS del giocatore. Eve
             COMPETITIONS
         ===================================================== */}
 
-        {activeSection === "competitions" && (
+        {activeSection === "competitions" && (isAdmin || isPlayer) && (
+          <TeamRoom players={players} isAdmin={isAdmin} onPlayer={(player) => { const full = players.find(p => p.id === player.id); if (full) setProfilePlayer(full); }} onArchive={() => setActiveSection("competition-archive")} />
+        )}
+
+        {activeSection === "competition-archive" && isAdmin && (
           <div>
             <PageHeader
               eyebrow="CALCIO TOTALE"
