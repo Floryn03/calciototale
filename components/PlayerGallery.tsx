@@ -36,9 +36,12 @@ export default function PlayerGallery({players,isAdmin,sessionPlayerId}:{players
  const [file,setFile]=useState<File|null>(null);
  const [busy,setBusy]=useState(false);
  const [viewing,setViewing]=useState<GalleryItem|null>(null);
+ const [roster,setRoster]=useState(players);
+ const [editingPlayer,setEditingPlayer]=useState<GalleryPlayer|null>(null);
+ const [playerDraft,setPlayerDraft]=useState({name:"",psn_id:"",shirt_number:"",position:""});
  const [signed,setSigned]=useState<Record<string,string>>({});
  const canEnter=isAdmin||Boolean(sessionPlayerId);
- const selected=players.find(p=>p.id===selectedId);
+ const selected=roster.find(p=>p.id===selectedId);
  const ownGallery=isAdmin||Boolean(selectedId&&selectedId===sessionPlayerId);
  const load=useCallback(async()=>{
    if(!canEnter){setItems([]);setLoading(false);return;}
@@ -61,9 +64,11 @@ export default function PlayerGallery({players,isAdmin,sessionPlayerId}:{players
    async function sign(){const paths=visible.flatMap(i=>[i.file_path,...(i.thumbnail_path?[i.thumbnail_path]:[])]);const result=await supabase.storage.from(bucket).createSignedUrls(paths,3600);if(cancelled)return;if(result.error){setError("Non riesco ad aprire i file. Premi Riprova.");return;}setSigned(Object.fromEntries((result.data||[]).filter(r=>r.path&&r.signedUrl).map(r=>[r.path!,r.signedUrl!])));}
    void sign();const timer=window.setInterval(()=>{void sign();},3000000);return()=>{cancelled=true;window.clearInterval(timer);};
  },[visible,canEnter]);
- const sortedPlayers=useMemo(()=>[...players].filter(p=>(p.name+" "+p.psn_id).toLowerCase().includes(search.toLowerCase())).sort((a,b)=>(a.psn_id||a.name).localeCompare(b.psn_id||b.name,"it")),[players,search]);
+ const sortedPlayers=useMemo(()=>[...roster].filter(p=>(p.name+" "+p.psn_id).toLowerCase().includes(search.toLowerCase())).sort((a,b)=>(a.psn_id||a.name).localeCompare(b.psn_id||b.name,"it")),[roster,search]);
  function openGallery(id:string){setSelectedId(id);setFilter('all');setCategory('all');setLimit(24);setNotice('');setSigned({});}
  function openEditor(value:"image"|"video"|GalleryItem){setEditor(value);setDraft(typeof value==='string'?blank:{title:value.title,description:value.description,category:value.category});setFile(null);setNotice('');}
+ function openPlayerEditor(player:GalleryPlayer){setEditingPlayer(player);setPlayerDraft({name:player.name,psn_id:player.psn_id,shirt_number:String(player.shirt_number),position:player.position});setNotice("");}
+ async function savePlayer(event:FormEvent){event.preventDefault();if(!editingPlayer||busy)return;const name=playerDraft.name.trim(),psn_id=playerDraft.psn_id.trim(),shirt_number=Number(playerDraft.shirt_number),position=playerDraft.position.trim();if(!name||!psn_id||!Number.isInteger(shirt_number)||shirt_number<0||!position){setNotice("Compila nome, ID PlayStation, numero e ruolo.");return;}setBusy(true);setNotice("");try{const result=await supabase.from("players").update({name,psn_id,shirt_number,position}).eq("id",editingPlayer.id).select("id").single();if(result.error||!result.data)throw Error("Salvataggio non riuscito.");setRoster(current=>current.map(player=>player.id===editingPlayer.id?{...player,name,psn_id,shirt_number,position}:player));setEditingPlayer(null);setNotice("Dati giocatore aggiornati.");}catch(error){setNotice(error instanceof Error?error.message:"Salvataggio non riuscito.");}finally{setBusy(false);}}
  async function save(event:FormEvent){
    event.preventDefault();if(busy||!editor||!selected)return;setBusy(true);setNotice('');let pending:GalleryItem|null=null;const uploaded:string[]=[];
    try{
@@ -104,7 +109,7 @@ export default function PlayerGallery({players,isAdmin,sessionPlayerId}:{players
      <label className="block text-sm text-slate-300">Cerca giocatore o PlayStation ID<input className={input} value={search} onChange={e=>setSearch(e.target.value)} placeholder="Cerca nella squadra…"/></label>
      {loading?<p role="status">Caricamento gallery…</p>:<div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{sortedPlayers.map(p=><article key={p.id} className="rounded-3xl border border-slate-800 bg-slate-900 p-5">
        <div className="flex items-center gap-4"><div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-emerald-400/10 text-2xl font-black text-emerald-300">{photos[p.id]?<Image src={photos[p.id]} alt={p.name} width={64} height={64} unoptimized className="h-full w-full object-cover"/>:p.name.slice(0,2).toUpperCase()}</div><div className="min-w-0"><h3 className="break-words text-lg font-black">{p.psn_id||p.name}</h3><p className="break-words text-sm text-slate-400">{p.name}</p><p className="mt-1 text-sm text-emerald-300">#{p.shirt_number} · {p.position}</p></div></div>
-       <div className="mt-5 flex flex-wrap items-center justify-between gap-3"><span className="text-sm text-slate-400">{items.filter(i=>i.player_id===p.id).length} contenuti</span><button type="button" className={secondary} onClick={()=>openGallery(p.id)}>VEDI GALLERY</button></div>
+       <div className="mt-5 flex flex-wrap items-center justify-between gap-3"><span className="text-sm text-slate-400">{items.filter(i=>i.player_id===p.id).length} contenuti</span><div className="flex flex-wrap gap-2">{isAdmin&&<button type="button" className={secondary} onClick={()=>openPlayerEditor(p)}>✏️ MODIFICA</button>}<button type="button" className={secondary} onClick={()=>openGallery(p.id)}>VEDI GALLERY</button></div></div>
      </article>)}</div>}{!loading&&!sortedPlayers.length&&<p className="text-slate-400">Nessun giocatore trovato.</p>}
    </>:<>
      <button type="button" className={secondary} onClick={()=>{setSelectedId(null);setNotice('');}}>← Tutti i giocatori</button>
@@ -117,6 +122,7 @@ export default function PlayerGallery({players,isAdmin,sessionPlayerId}:{players
        </button><div className="p-4"><p className="text-xs text-emerald-300">{galleryLabels[item.category]} · {new Date(item.created_at).toLocaleDateString('it-IT')}</p><h4 className="mt-2 break-words font-bold">{item.title}</h4>{item.description&&<p className="mt-2 line-clamp-2 break-words text-sm text-slate-400">{item.description}</p>}{controls(item)}</div>
      </article>)}</div>}{visible.length<filtered.length&&<button className={secondary} onClick={()=>setLimit(n=>n+24)}>Mostra altri contenuti</button>}
    </>}
+   {editingPlayer&&<GalleryDialog title={`✏️ Modifica ${editingPlayer.name}`} onClose={()=>setEditingPlayer(null)} busy={busy}><form onSubmit={savePlayer} className="space-y-4"><label className="block text-sm font-bold">Nome giocatore<input className={input} value={playerDraft.name} onChange={e=>setPlayerDraft({...playerDraft,name:e.target.value})} disabled={busy}/></label><label className="block text-sm font-bold">ID PlayStation<input className={input} value={playerDraft.psn_id} onChange={e=>setPlayerDraft({...playerDraft,psn_id:e.target.value})} placeholder="Inserisci ID PlayStation" disabled={busy}/></label><div className="grid gap-4 sm:grid-cols-2"><label className="block text-sm font-bold">Numero maglia<input type="number" min="0" max="999" className={input} value={playerDraft.shirt_number} onChange={e=>setPlayerDraft({...playerDraft,shirt_number:e.target.value})} disabled={busy}/></label><label className="block text-sm font-bold">Ruolo<input className={input} value={playerDraft.position} onChange={e=>setPlayerDraft({...playerDraft,position:e.target.value})} placeholder="ATT, POR, DCC…" disabled={busy}/></label></div>{notice&&<p role="alert" className="text-amber-200">{notice}</p>}<button type="submit" className={button} disabled={busy}>{busy?"Salvataggio…":"Salva dati giocatore"}</button></form></GalleryDialog>}
    {editor&&<GalleryDialog title={typeof editor==='string'?(editor==='image'?'📷 Carica foto':'🎥 Carica video'):'✏️ Modifica contenuto'} onClose={()=>setEditor(null)} busy={busy}><form onSubmit={save} className="space-y-4">
      {typeof editor==='string'&&<label className="block text-sm font-bold">{editor==='image'?'Foto · JPG, PNG, WEBP, GIF · massimo 10 MB':'Video · MP4, WEBM, MOV · massimo 60 secondi e 50 MB'}<input required type="file" accept={editor==='image'?'image/jpeg,image/png,image/webp,image/gif':'video/mp4,video/webm,video/quicktime'} className={input} disabled={busy} onChange={e=>setFile(e.target.files?.[0]||null)}/></label>}
      <label className="block text-sm font-bold">Titolo<input required maxLength={120} value={draft.title} onChange={e=>setDraft({...draft,title:e.target.value})} className={input} disabled={busy}/></label>
