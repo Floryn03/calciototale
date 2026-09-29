@@ -152,12 +152,11 @@ export default function VotingHub({
   players,
   matches,
   isAdmin,
-  view,
 }: {
   players: Player[];
   matches: MatchItem[];
   isAdmin: boolean;
-  view: "votes" | "mvp";
+  view: "votes";
 }) {
   const [viewerId, setViewerId] = useState<string | null>(null);
   const [ratings, setRatings] = useState<MatchRating[]>([]);
@@ -522,102 +521,6 @@ export default function VotingHub({
 
   const currentMatch = matches.find((match) => match.id === selectedMatchId);
 
-  if (view === "mvp") {
-    const mvpComments = selectedMvp?.player_id
-      ? ratings.filter((rating) => rating.week_start === selectedWeek && rating.player_id === selectedMvp.player_id && rating.comment)
-      : [];
-    const byPosition = new Map(selectedTopSlots.map((slot) => [slot.position, slot]));
-
-    return (
-      <div className="space-y-7">
-        <section className="rounded-3xl border border-amber-400/30 bg-gradient-to-br from-amber-400/10 via-slate-900 to-emerald-500/10 p-6 sm:p-8">
-          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-            <div className="flex items-center gap-4">
-              <Image src="/calcio-totale-2026-logo.png" alt="Logo ufficiale Calcio Totale 2026" width={96} height={96} unoptimized className="h-20 w-20 shrink-0 object-contain mix-blend-screen sm:h-24 sm:w-24" />
-              <div>
-                <p className="text-sm font-black uppercase tracking-[0.2em] text-amber-300">CALCIO TOTALE</p>
-                <h2 className="mt-2 text-3xl font-black">👑 MVP e Top 11</h2>
-                <p className="mt-2 text-sm text-slate-400">Storico reale delle prestazioni settimanali.</p>
-              </div>
-            </div>
-            <select value={selectedWeek} onChange={(event) => setSelectedWeek(event.target.value)} className="min-h-11 rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm font-bold">
-              {weeks.map((week) => <option key={week} value={week}>{formatWeek(week)}</option>)}
-            </select>
-          </div>
-        </section>
-
-        {isAdmin && (
-          <section className="flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-900 p-5 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <label className="text-xs font-bold uppercase tracking-wide text-slate-500">Minimo voti affidabili</label>
-              <input type="number" min="1" max="50" value={minimumDraft} onChange={(event) => setMinimumDraft(event.target.value)} className="mt-2 block min-h-11 w-36 rounded-xl border border-slate-700 bg-slate-950 px-4 py-3" />
-              <p className="mt-2 text-xs text-slate-500">Attuale: {minimumVotes}. Sotto questa soglia un giocatore resta in classifica ma non entra in Top 11/MVP.</p>
-            </div>
-            <div className="flex gap-2">
-              <button type="button" onClick={saveMinimumVotes} disabled={recalculating} className="min-h-11 rounded-xl border border-amber-300/30 px-4 py-3 text-sm font-bold text-amber-300 disabled:opacity-50">Salva soglia</button>
-              <button type="button" onClick={recalculateWeek} disabled={recalculating} className="min-h-11 rounded-xl bg-amber-400 px-4 py-3 text-sm font-black text-slate-950 disabled:opacity-50">{recalculating ? "⏳ Ricalcolo…" : "↻ Ricalcola"}</button>
-            </div>
-          </section>
-        )}
-
-        <section className="rounded-3xl border border-amber-400/30 bg-slate-900 p-6 text-center shadow-[0_0_50px_rgba(251,191,36,0.08)]">
-          <p className="text-sm font-black tracking-[0.2em] text-amber-300">MVP DELLA SETTIMANA</p>
-          {selectedMvp?.player_id && selectedMvp.player_name ? (
-            <div className="mx-auto mt-5 max-w-xl">
-              <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full border-2 border-amber-300 bg-amber-400/10 text-4xl">👑</div>
-              <h3 className="mt-4 text-3xl font-black">{selectedMvp.player_name}</h3>
-              <p className="mt-1 font-bold text-emerald-300">{selectedMvp.position}</p>
-              <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <Metric label="Media" value={selectedMvp.average_rating?.toFixed(2) || "—"} />
-                <Metric label="Voti" value={String(selectedMvp.votes_count || 0)} />
-                <Metric label="Partite" value={String(selectedMvp.matches_count || 0)} />
-                <Metric label="Rendimento" value={selectedMvp.performance_score?.toFixed(2) || "—"} />
-              </div>
-              {mvpComments.length > 0 && <div className="mt-5 text-left"><p className="text-sm font-black text-amber-300">Commenti</p>{mvpComments.map((rating) => <p key={rating.id} className="mt-2 rounded-xl bg-slate-950 p-3 text-sm text-slate-300">“{rating.comment}”</p>)}</div>}
-            </div>
-          ) : <p className="mt-5 text-slate-400">Nessun MVP idoneo: servono voti reali e almeno {minimumVotes} votazioni.</p>}
-        </section>
-
-        <section className="rounded-3xl border border-emerald-400/25 bg-slate-900 p-4 sm:p-7">
-          <div className="mb-5 flex flex-col items-center text-center"><Image src="/calcio-totale-2026-logo.png" alt="Logo ufficiale Calcio Totale 2026" width={64} height={64} unoptimized className="mb-2 h-16 w-16 object-contain mix-blend-screen" /><p className="text-sm font-black tracking-[0.2em] text-emerald-300">🏆 TOP 11 DELLA SETTIMANA</p><h3 className="mt-1 text-2xl font-black">Modulo ufficiale 3-5-2</h3></div>
-          <div className="rounded-3xl border border-emerald-200/15 bg-gradient-to-b from-emerald-700/35 via-emerald-800/25 to-emerald-950 p-3 sm:p-6">
-            <div className="mx-auto grid max-w-3xl gap-4 text-center">
-              <div className="mx-auto grid w-full max-w-sm grid-cols-2 gap-3"><TopCard slot={byPosition.get("ATT (PS)")!} /><TopCard slot={byPosition.get("ATT (PD)")!} /></div>
-              <div className="mx-auto grid w-full max-w-2xl grid-cols-2 gap-3"><TopCard slot={byPosition.get("ES")!} /><TopCard slot={byPosition.get("ED")!} /></div>
-              <div className="mx-auto grid w-full max-w-sm grid-cols-2 gap-3"><TopCard slot={byPosition.get("CCS")!} /><TopCard slot={byPosition.get("CCD")!} /></div>
-              <div className="mx-auto w-full max-w-40"><TopCard slot={byPosition.get("CDC")!} /></div>
-              <div className="mx-auto grid w-full max-w-2xl grid-cols-3 gap-3"><TopCard slot={byPosition.get("DCS")!} /><TopCard slot={byPosition.get("DCC")!} /><TopCard slot={byPosition.get("DCD")!} /></div>
-              <div className="mx-auto w-full max-w-40"><TopCard slot={byPosition.get("POR")!} /></div>
-            </div>
-          </div>
-        </section>
-
-        <section className="rounded-3xl border border-amber-400/30 bg-gradient-to-br from-amber-400/10 via-slate-900 to-slate-900 p-5 sm:p-7">
-          <div className="text-center">
-            <p className="text-sm font-black tracking-[0.2em] text-amber-300">🏅 MIGLIORI PER RUOLO</p>
-            <h3 className="mt-1 text-2xl font-black">I migliori della settimana</h3>
-            <p className="mt-2 text-sm text-slate-400">Media voti calcolata sul ruolo scelto nella presenza.</p>
-          </div>
-          <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-            {roleAwards.map(({ role, winner }) => (
-              <div key={role} className="rounded-2xl border border-amber-300/20 bg-slate-950 p-4 text-center">
-                <p className="text-xs font-black text-amber-300">{role}</p>
-                {winner ? (
-                  <>
-                    <p className="mt-2 truncate font-black">{winner.player_name}</p>
-                    <p className="mt-1 font-mono text-lg font-black text-emerald-300">{winner.average_rating.toFixed(2)}</p>
-                    <p className="text-xs text-slate-500">{winner.votes_count} voti · {winner.matches_count} partite</p>
-                  </>
-                ) : (
-                  <p className="mt-3 text-sm text-slate-500">Nessun dato idoneo</p>
-                )}
-              </div>
-            ))}
-          </div>
-        </section>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-7">
@@ -690,3 +593,4 @@ export default function VotingHub({
 function Metric({ label, value }: { label: string; value: string }) {
   return <div className="rounded-xl bg-slate-950 p-3"><p className="text-[10px] font-bold uppercase text-slate-500">{label}</p><p className="mt-1 text-lg font-black">{value}</p></div>;
 }
+

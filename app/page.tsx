@@ -5,6 +5,7 @@ import Image from "next/image";
 import { supabase } from "../lib/supabase";
 import VotingHub from "../components/VotingHub";
 import TeamRoom from "../components/TeamRoom";
+import PlayerGallery from "../components/PlayerGallery";
 import GoalkeeperLeaderboard from "../components/GoalkeeperLeaderboard";
 import PlayerProfileModal from "../components/PlayerProfileModal";
 
@@ -299,7 +300,7 @@ const menu = [
   { id: "calendar", label: "Calendario", icon: "🗓️" },
   { id: "competitions", label: "Spogliatoio", icon: "🔥" },
   { id: "votes", label: "Votazioni", icon: "⭐" },
-  { id: "mvp", label: "MVP", icon: "👑" },
+  { id: "gallery", label: "Player Gallery", icon: "📸" },
   { id: "stats", label: "Statistiche", icon: "📊" },
   { id: "admin", label: "Amministrazione", icon: "⚙️" },
 ];
@@ -2522,10 +2523,10 @@ Saranno rimossi solo voto, gol, assist, cartellini, MVP e MVS del giocatore. Eve
     ? menu
     : isPlayer
       ? menu.filter((item) =>
-          ["dashboard", "players", "presences", "events", "calendar", "competitions", "votes", "mvp", "stats"].includes(item.id)
+          ["dashboard", "players", "presences", "events", "calendar", "competitions", "votes", "gallery", "stats"].includes(item.id)
         )
       : menu.filter((item) =>
-          ["dashboard", "events", "votes", "mvp"].includes(item.id)
+          ["dashboard", "events", "votes", "gallery"].includes(item.id)
         );
   const presencePlayers = players;
   const presenceDepartments = [
@@ -4164,13 +4165,8 @@ Saranno rimossi solo voto, gol, assist, cartellini, MVP e MVS del giocatore. Eve
             MVP
         ===================================================== */}
 
-        {activeSection === "mvp" && (
-          <VotingHub
-            players={players}
-            matches={events}
-            isAdmin={isAdmin}
-            view="mvp"
-          />
+        {activeSection === "gallery" && (
+          <PlayerGallery players={players} isAdmin={isAdmin} sessionPlayerId={sessionPlayerId} />
         )}
 
         {/* =====================================================
@@ -5425,3 +5421,4 @@ function AdminCard({
     </div>
   );
 }
+
