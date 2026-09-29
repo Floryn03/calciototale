@@ -205,7 +205,7 @@ export default function PlayerProfileModal({
               {player.name}
             </h2>
             <p className="mt-2 text-sm text-slate-400">
-              ID EA: {player.psn_id} · Maglia #{player.shirt_number}
+              ID PlayStation: {player.psn_id} · Maglia #{player.shirt_number}
             </p>
             <div className="mt-6 grid grid-cols-2 gap-3 text-center">
               <CardMetric
@@ -348,7 +348,7 @@ function PlayerCardViewer({
       if (card.show_role) drawText(player.position, "role", "900 58px Arial");
       if (card.show_number) drawText("#" + player.shirt_number, "number", "900 64px Arial");
       if (card.show_name) drawText(displayName.toUpperCase(), "name", "900 68px Arial");
-      if (card.show_id) drawText("ID EA: " + displayId, "id", "700 31px Arial");
+      if (card.show_id) drawText("ID PlayStation: " + displayId, "id", "700 31px Arial");
       const metrics: Array<[boolean, string, number, CardLayoutKey]> = [
         [card.show_velocity, "VEL", card.velocity, "velocity"], [card.show_shooting, "TIR", card.shooting, "shooting"],
         [card.show_passing, "PAS", card.passing, "passing"], [card.show_dribbling, "DRI", card.dribbling, "dribbling"],
@@ -676,7 +676,7 @@ function PlayerCardEditor({
         draw(displayName.toUpperCase(), "name", "900 68px Arial");
       }
       if (card.show_id) {
-        draw(`ID EA: ${displayId}`, "id", "700 31px Arial");
+        draw(`ID PlayStation: ${displayId}`, "id", "700 31px Arial");
       }
       const values: Array<[boolean, string, number]> = [
         [card.show_velocity, "VEL", card.velocity],
@@ -821,7 +821,7 @@ function PlayerCardEditor({
                     />
                   </label>
                   <label className="text-sm font-bold">
-                    ID EA sulla card
+                    ID PlayStation sulla card
                     <input
                       value={card.display_id ?? ""}
                       onChange={(event) =>
@@ -948,7 +948,7 @@ function PlayerCardEditor({
                     [
                       ["show_photo", "Foto"],
                       ["show_name", "Nome"],
-                      ["show_id", "ID EA"],
+                      ["show_id", "ID PlayStation"],
                       ["show_number", "Numero"],
                       ["show_role", "Ruolo"],
                       ["show_ovr", "OVR"],
@@ -1038,3 +1038,4 @@ function CardMetric({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
+

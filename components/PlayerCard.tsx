@@ -413,7 +413,7 @@ const PlayerCard = forwardRef<
           style={itemStyle("id")}
           className="absolute z-30 whitespace-nowrap text-[clamp(.58rem,2.3vw,.9rem)] font-bold tracking-wide text-white [text-shadow:0_2px_5px_rgba(15,23,42,.95)]"
         >
-          ID EA: {displayId}
+          ID PlayStation: {displayId}
         </CardItem>
       )}
       {card.show_number && (
@@ -455,3 +455,4 @@ const PlayerCard = forwardRef<
 
 PlayerCard.displayName = "PlayerCard";
 export default PlayerCard;
+

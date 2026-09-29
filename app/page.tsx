@@ -3012,17 +3012,17 @@ Saranno rimossi solo voto, gol, assist, cartellini, MVP e MVS del giocatore. Eve
                 <div className="grid gap-5 md:grid-cols-2">
 
                   <Input
-                    label="ID PlayStation"
+                    label="Nome giocatore"
                     value={name}
                     onChange={setName}
-                    placeholder="Es. ID PlayStation"
+                    placeholder="Es. Nome giocatore"
                   />
 
                   <Input
-                    label="ID EA"
+                    label="ID PlayStation"
                     value={psnId}
                     onChange={setPsnId}
-                    placeholder="Es. ID EA"
+                    placeholder="Es. ID PlayStation"
                   />
 
                   <Input
@@ -3149,7 +3149,7 @@ Saranno rimossi solo voto, gol, assist, cartellini, MVP e MVS del giocatore. Eve
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="🔎 Cerca per ID PlayStation, ID EA o posizione..."
+              placeholder="🔎 Cerca per nome, ID PlayStation o posizione..."
               className="mb-6 w-full rounded-xl border border-slate-800 bg-slate-900 px-5 py-4 outline-none focus:border-emerald-500"
             />
 
@@ -5194,7 +5194,7 @@ function PlayerCard({
             </h3>
 
             <p className="mt-1 text-sm text-slate-500">
-              ID EA: {player.psn_id}
+              ID PlayStation: {player.psn_id}
             </p>
 
           </div>
