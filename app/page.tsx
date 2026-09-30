@@ -254,8 +254,6 @@ const playerPositionGroups = [
   { id: "ES", label: "🏃 ES" },
   { id: "ED", label: "🏃 ED" },
   { id: "ATT", label: "⚽ ATT" },
-  { id: "ATT (PS)", label: "⚽ ATT (PS)" },
-  { id: "ATT (PD)", label: "⚽ ATT (PD)" },
 ];
 
 // Ordine richiesto dall'Admin per la tabella Statistiche individuali.
@@ -1297,8 +1295,21 @@ export default function Home() {
     .map((group) => ({
       ...group,
       players: filteredPlayers
-        .filter((player) => player.position === group.id)
-        .sort((a, b) => (a.position_rank || 999) - (b.position_rank || 999) || a.name.localeCompare(b.name, "it")),
+        .filter((player) => group.id === "ATT"
+          ? ["ATT", "ATT (PS)", "ATT (PD)"].includes(player.position)
+          : player.position === group.id)
+        .sort((a, b) => {
+          if (group.id === "ATT") {
+            const order = ["floryn03", "xxantonio_1902xx", "its_guerrie_-", "luigi-juve-2012"];
+            const rank = (player: Player) => {
+              const index = order.findIndex(id => id === player.name.toLowerCase() || id === player.psn_id.toLowerCase());
+              return index < 0 ? order.length : index;
+            };
+            const difference = rank(a) - rank(b);
+            if (difference) return difference;
+          }
+          return (a.position_rank || 999) - (b.position_rank || 999) || a.name.localeCompare(b.name, "it");
+        }),
     }))
     .filter((group) => group.players.length > 0), [filteredPlayers]);
 
@@ -3176,9 +3187,7 @@ Saranno rimossi solo voto, gol, assist, cartellini, MVP e MVS del giocatore. Eve
                         <PlayerCard
                           key={player.id}
                           player={player}
-                          hierarchyPosition={group.id === "ATT (PD)"
-                            ? players.filter((item) => item.position === "ATT (PS)").length + index + 1
-                            : index + 1}
+                          hierarchyPosition={index + 1}
                           onDelete={deletePlayer}
                           onToggleStatus={togglePlayerStatus}
                           onEdit={openEditPlayer}
