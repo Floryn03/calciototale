@@ -230,6 +230,7 @@ const positions = [
   { value: "CCS", label: "⚙️ CCS — Centrocampista sinistro" },
   { value: "CDC", label: "⚙️ CDC — Centrocampista difensivo" },
   { value: "CCD", label: "⚙️ CCD — Centrocampista destro" },
+  { value: "ATT", label: "⚽ ATT — Attaccante" },
   { value: "ATT (PS)", label: "⚽ ATT (PS) — Attaccante punta sinistra" },
   { value: "ATT (PD)", label: "⚽ ATT (PD) — Attaccante punta destra" },
 ];
@@ -252,6 +253,7 @@ const playerPositionGroups = [
   { id: "CCD", label: "⚙️ CCD" },
   { id: "ES", label: "🏃 ES" },
   { id: "ED", label: "🏃 ED" },
+  { id: "ATT", label: "⚽ ATT" },
   { id: "ATT (PS)", label: "⚽ ATT (PS)" },
   { id: "ATT (PD)", label: "⚽ ATT (PD)" },
 ];
@@ -2534,7 +2536,7 @@ Saranno rimossi solo voto, gol, assist, cartellini, MVP e MVS del giocatore. Eve
     { title: "🛡️ CT | DIFESA", positions: ["DCC", "DCS", "DCD"] },
     { title: "🎯 CT | CENTROCAMPO", positions: ["CDC", "CCS", "CCD"] },
     { title: "⚡ CT | ESTERNI", positions: ["ES", "ED"] },
-    { title: "🔥 CT | ATTACCO", positions: ["ATT (PS)", "ATT (PD)"] },
+    { title: "🔥 CT | ATTACCO", positions: ["ATT", "ATT (PS)", "ATT (PD)"] },
   ];
   const selectedEventReport = openEventReportId
     ? events.find((event) => event.id === openEventReportId) || null
